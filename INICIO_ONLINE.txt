@@ -1,0 +1,9 @@
+PRÓXIMO PASSO
+1) Colocar esta pasta em um repositório GitHub.
+2) Criar projeto no Railway.
+3) Adicionar PostgreSQL.
+4) Fazer deploy do repositório.
+5) Gerar domínio público.
+6) Cadastrar as variáveis secretas no Railway.
+7) Voltar ao Meta Developers e preencher URL de callback + Verificar token.
+8) Assinar mensagens do WhatsApp.
