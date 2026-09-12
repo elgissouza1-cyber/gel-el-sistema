@@ -173,6 +173,11 @@ app.get('/api/orders/:id', async (req,res)=>{ const {rows}=await pool.query(`SEL
 app.post('/api/orders/:id/confirm-receipt', async (req,res)=>{ const r=await pool.query(`UPDATE orders SET status='DELIVERED',customer_confirmed_at=NOW(),delivered_at=NOW() WHERE id=$1 AND status='OUT_FOR_DELIVERY' AND payment_status='PAID' RETURNING id,status,customer_confirmed_at`,[req.params.id]); if(!r.rowCount)return res.status(409).json({error:'Pedido não está aguardando confirmação.'}); res.json(r.rows[0]); });
 app.post('/api/orders/:id/review', async (req,res)=>{ const {stars=null,comment=''}=req.body||{}; if(stars!==null&&(!Number.isInteger(stars)||stars<1||stars>5))return res.status(400).json({error:'Nota inválida.'}); const order=await pool.query(`SELECT id,status,customer_confirmed_at FROM orders WHERE id=$1`,[req.params.id]); if(!order.rowCount||order.rows[0].status!=='DELIVERED'||!order.rows[0].customer_confirmed_at)return res.status(403).json({error:'Só é possível avaliar após confirmar o recebimento.'}); try{const r=await pool.query(`INSERT INTO reviews(order_id,stars,comment) VALUES($1,$2,$3) RETURNING *`,[req.params.id,stars,comment?.trim()||'']);res.status(201).json(r.rows[0]);}catch(e){if(e.code==='23505')return res.status(409).json({error:'Este pedido já foi avaliado.'});res.status(500).json({error:'Não foi possível salvar a avaliação.'});} });
 
+// ---------- Public legal pages for Meta and customers ----------
+app.get('/politica-de-privacidade', (_req,res)=>res.sendFile(path.join(root,'public','politica-de-privacidade.html')));
+app.get('/termos-de-servico', (_req,res)=>res.sendFile(path.join(root,'public','termos-de-servico.html')));
+app.get('/exclusao-de-dados', (_req,res)=>res.sendFile(path.join(root,'public','exclusao-de-dados.html')));
+
 app.use('/gestor', express.static(path.join(root,'gestor')));
 app.use('/', express.static(path.join(root,'cliente')));
 app.get('/pagamento-concluido', (_req,res)=>res.sendFile(path.join(root,'cliente','index.html')));
