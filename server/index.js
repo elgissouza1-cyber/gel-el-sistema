@@ -203,7 +203,7 @@ app.post('/api/orders/:id/review', async (req,res)=>{ const {stars=null,comment=
 
 // ---------- Gestor API ----------
 app.get('/api/gestor/orders', async (_req,res)=>{
-  const {rows}=await pool.query(`SELECT o.*,COALESCE(json_agg(json_build_object('productId',oi.product_id,'name',oi.product_name,'quantity',oi.quantity,'unitPriceCents',oi.unit_price_cents,'subtotalCents',oi.subtotal_cents)) FILTER (WHERE oi.id IS NOT NULL),'[]') items FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`);
+  const {rows}=await pool.query(`SELECT o.*,COALESCE(json_agg(json_build_object('productId',oi.product_id,'name',oi.product_name,'quantity',oi.quantity,'unitPriceCents',oi.unit_price_cents,'subtotalCents',oi.subtotal_cents)) FILTER (WHERE oi.id IS NOT NULL),'[]') items FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id WHERE o.payment_status='PAID' GROUP BY o.id ORDER BY o.created_at DESC`);
   res.json(rows);
 });
 app.get('/api/gestor/products', async (_req,res)=>{
