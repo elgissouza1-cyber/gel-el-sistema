@@ -40,10 +40,7 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   paid_at TIMESTAMPTZ,
   customer_confirmed_at TIMESTAMPTZ,
-  delivered_at TIMESTAMPTZ,
-  refund_status TEXT NOT NULL DEFAULT 'NONE',
-  refund_requested_at TIMESTAMPTZ,
-  refund_note TEXT DEFAULT ''
+  delivered_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
@@ -67,7 +64,3 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
-
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_status TEXT NOT NULL DEFAULT 'NONE';
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at TIMESTAMPTZ;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_note TEXT DEFAULT '';

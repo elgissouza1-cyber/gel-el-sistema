@@ -25,3 +25,10 @@ Depois de obter o domínio público, o webhook da Meta será:
 GET/POST https://SEU-DOMINIO/api/webhooks/whatsapp
 
 O Verify Token é um segredo criado por nós e precisa ser exatamente o mesmo na Meta e no Railway.
+
+## Cotação de entrega Uber Direct
+O checkout agora calcula a taxa antes do pagamento. A rota `POST /api/delivery/estimate` usa Uber Direct em modo `uber` e guarda a cotação por até 15 minutos. O pedido só é criado com entrega quando existe uma cotação válida; o servidor usa a taxa armazenada, não confia no valor enviado pelo navegador.
+
+Para testar apenas a interface sem acesso liberado pela Uber, defina temporariamente `DELIVERY_QUOTE_MODE=mock` e, se quiser, `MOCK_DELIVERY_FEE_CENTS=500`. Antes de uso real, volte para `DELIVERY_QUOTE_MODE=uber`.
+
+Em produção, configure `UBER_DIRECT_STORE_ID` com o Store ID real retornado/onboarded pela Uber Direct. O Client Secret permanece somente no servidor/Railway.
