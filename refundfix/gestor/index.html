@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meu Pedido AI — Gestor</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:14px Arial;background:#f6f3f8;color:#2d2432}.top{height:64px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;padding:0 22px;position:sticky;top:0;z-index:5}.brand{font-size:21px;font-weight:800;color:#704095}.layout{display:flex;min-height:calc(100vh - 64px)}aside{width:220px;background:#302538;color:#fff;padding:18px 12px}aside button{display:block;width:100%;text-align:left;border:0;background:transparent;color:#eee;padding:12px;border-radius:9px;cursor:pointer;margin:3px 0}aside button:hover,aside button.on{background:#704095}.content{flex:1;padding:24px;max-width:1250px}.view{display:none}.view.on{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:15px}.card{background:#fff;border-radius:15px;padding:18px;box-shadow:0 2px 12px #0001}.metric{font-size:26px;font-weight:800;margin-top:8px}.muted{color:#777}.btn{border:0;border-radius:9px;padding:10px 13px;background:#704095;color:#fff;font-weight:700;cursor:pointer}.btn.red{background:#b23b3b}.btn.green{background:#3d8651}.btn.gray{background:#e9e2ed;color:#44354c}.btn+ .btn{margin-left:6px}.product,.order{border-top:1px solid #eee;padding:14px 0}.row{display:flex;align-items:center;gap:10px;justify-content:space-between}.pill{padding:5px 9px;border-radius:20px;background:#eee2f5;font-weight:700;font-size:12px}.alert{border:2px solid #704095;background:#fcf7ff}.modal{position:fixed;inset:0;background:#0006;display:none;align-items:center;justify-content:center;z-index:20}.modal.on{display:flex}.modalbox{background:#fff;padding:24px;border-radius:16px;width:min(500px,90%)}input,select{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;margin:6px 0 12px}
+@media(max-width:700px){aside{width:62px}aside button{font-size:0;text-align:center}aside button:first-letter{font-size:18px}.content{padding:14px}}
+</style></head><body>
+<div class="top"><div class="brand">Meu Pedido AI · Gestor</div><div>🟢 Loja online</div></div>
+<div class="layout"><aside>
+<button class="on" onclick="page('inicio',this)">🏠 Início</button>
+<button onclick="page('pedidos',this)">🧾 Pedidos</button>
+<button onclick="page('produtos',this)">🍧 Produtos</button>
+<button onclick="page('estoque',this)">📦 Estoque</button>
+<button onclick="page('entregas',this)">🚚 Entregas</button>
+<button onclick="page('promocoes',this)">🏷️ Promoções</button>
+<button onclick="page('clientes',this)">👥 Clientes</button>
+<button onclick="page('financeiro',this)">💰 Financeiro</button>
+<button onclick="page('avaliacoes',this)">⭐ Avaliações</button>
+<button onclick="page('config',this)">⚙️ Configurações</button>
+</aside><main class="content">
+
+<section id="inicio" class="view on"><h1>Visão geral</h1><div class="grid">
+<div class="card"><span class="muted">Pedidos hoje</span><div class="metric" id="mPedidos">0</div></div>
+<div class="card"><span class="muted">Vendas</span><div class="metric" id="mVendas">R$ 0,00</div></div>
+<div class="card"><span class="muted">Produtos ativos</span><div class="metric" id="mProdutos">0</div></div>
+<div class="card"><span class="muted">Pedidos em andamento</span><div class="metric" id="mAndamento">0</div></div>
+</div><br><div class="card"><h2>Últimos pedidos</h2><div id="homeOrders"></div></div></section>
+
+<section id="pedidos" class="view"><div class="row"><h1>Gestor de pedidos</h1><button class="btn" onclick="testSound()">🔊 Testar som</button></div><div id="orders"></div></section>
+
+<section id="produtos" class="view"><div class="row"><h1>Produtos</h1><button class="btn" onclick="newProduct()">+ Novo produto</button></div><div class="card"><div id="products"></div></div></section>
+
+<section id="estoque" class="view"><h1>Estoque</h1><div class="card"><div id="stock"></div></div></section>
+
+<section id="entregas" class="view"><h1>Entregas</h1><div class="card"><p>Pedidos em entrega ficam aqui. Quando o pedido sair para entrega, o fechamento será feito pela confirmação do cliente.</p><div id="deliveries"></div></div></section>
+
+<section id="promocoes" class="view"><h1>Promoções</h1><div class="grid"><div class="card"><h3>Desconto</h3><p>Crie descontos por produto ou pedido.</p><button class="btn" onclick="alert('Módulo de criação de promoções preparado para a próxima integração.')">Criar promoção</button></div><div class="card"><h3>Combos</h3><p>Monte combinações com preço promocional.</p><button class="btn">Novo combo</button></div></div></section>
+
+<section id="clientes" class="view"><h1>Clientes</h1><div class="card"><p>Clientes e histórico de pedidos serão registrados automaticamente.</p><div id="customers"></div></div></section>
+
+<section id="avaliacoes" class="view"><h1>⭐ Avaliações dos pedidos</h1><div class="card"><p class="muted">Veja as notas e comentários deixados pelos clientes depois de confirmarem o recebimento. A avaliação é da experiência com o pedido inteiro.</p><div id="reviews"></div></div></section>
+
+<section id="financeiro" class="view"><h1>Financeiro</h1><div class="grid"><div class="card"><span class="muted">Faturamento</span><div class="metric" id="finSales">R$ 0,00</div></div><div class="card"><span class="muted">Taxas</span><div class="metric">R$ 0,00</div></div><div class="card"><span class="muted">Resultado estimado</span><div class="metric" id="finNet">R$ 0,00</div></div></div></section>
+
+<section id="config" class="view"><h1>Configurações da loja</h1><div class="card"><label>Nome da loja</label><input value="Gel & El Suquinhos Gourmet"><label>Pedido mínimo</label><input value="0,00"><label>Entrega</label><select><option>Ativa</option><option>Somente retirada</option></select><button class="btn" onclick="alert('Configuração salva nesta demonstração.')">Salvar configurações</button></div></section>
+
+</main></div>
+<div id="modal" class="modal"><div class="modalbox"><h2 id="modalTitle">Produto</h2><label>Nome</label><input id="pName"><label>Preço</label><input id="pPrice" type="number" step=".01"><label>Estoque</label><input id="pStock" type="number"><label>Categoria</label><select id="pCat" onchange="categoryChanged()"><option value="">Selecione uma categoria</option></select><input id="pCatNew" placeholder="Nome da nova categoria" style="display:none;margin-top:8px"><br><button class="btn" onclick="saveProduct()">Salvar</button> <button class="btn gray" onclick="closeModal()">Cancelar</button></div></div>
+<script>
+const API='/api/gestor';
+let db={products:[],orders:[],customers:[],reviews:[],finance:null};
+let editId=null;
+let firstRefresh=true;
+let knownReceived=new Set();
+let audioCtx=null;
+const originalTitle=document.title;
+const L={PENDING_PAYMENT:'Aguardando pagamento',RECEIVED:'🔔 Novo pedido',ACCEPTED:'Aceito',PREPARING:'Preparando',READY:'Pronto',DELIVERY_REQUESTED:'Entrega solicitada',DRIVER_ASSIGNED:'Entregador encontrado',OUT_FOR_DELIVERY:'Saiu para entrega',DELIVERED:'Finalizado',REJECTED:'Recusado'};
+const money=v=>'R$ '+Number(v||0).toFixed(2).replace('.',',');
+const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+async function api(path,opts={}){const r=await fetch(API+path,{headers:{'Content-Type':'application/json'},...opts});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Não foi possível concluir a operação.');return data}
+function page(id,b){document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('aside button').forEach(x=>x.classList.remove('on'));b.classList.add('on');render()}
+function unlockAudio(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}}
+document.addEventListener('click',unlockAudio,{passive:true});
+document.addEventListener('pointerdown',unlockAudio,{passive:true});
+document.addEventListener('keydown',unlockAudio,{passive:true});
+function beep(){try{unlockAudio();if(!audioCtx)return;const now=audioCtx.currentTime;[0,0.22,0.44,0.66].forEach((delay,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=[880,1046,880,1046][i];g.gain.setValueAtTime(.0001,now+delay);g.gain.exponentialRampToValueAtTime(.22,now+delay+.03);g.gain.exponentialRampToValueAtTime(.0001,now+delay+.20);o.connect(g);g.connect(audioCtx.destination);o.start(now+delay);o.stop(now+delay+.22)});}catch(e){}}
+function testSound(){unlockAudio();setTimeout(beep,80);}
+
+function alertNewOrders(orders){const pending=orders.filter(o=>o.status==='RECEIVED');if(firstRefresh){knownReceived=new Set(pending.map(o=>o.id));firstRefresh=false;return}const fresh=pending.filter(o=>!knownReceived.has(o.id));if(fresh.length){beep();document.title='🔔 NOVO PEDIDO! · Gestor';setTimeout(()=>{document.title=originalTitle},5000)}knownReceived=new Set(pending.map(o=>o.id));}
+function actions(o){
+ if(o.status==='RECEIVED')return `<button class="btn" onclick="accept(${o.id})">ACEITAR</button> <button class="btn red" onclick="reject(${o.id})">RECUSAR</button>`;
+ if(o.status==='ACCEPTED')return `<button class="btn" onclick="setStatus(${o.id},'PREPARING')">▶ Iniciar preparo</button>`;
+ if(o.status==='PREPARING')return `<button class="btn" onclick="setStatus(${o.id},'READY')">✓ Marcar pronto</button>`;
+ if(o.status==='READY'&&o.order_type==='PICKUP')return `<button class="btn green" onclick="setStatus(${o.id},'DELIVERED')">✓ Retirada concluída</button>`;
+ if(o.status==='READY'&&o.order_type==='DELIVERY')return `<button class="btn" onclick="setStatus(${o.id},'DELIVERY_REQUESTED')">🚚 Solicitar entrega</button>`;
+ if(o.status==='DELIVERY_REQUESTED')return `<button class="btn" onclick="setStatus(${o.id},'DRIVER_ASSIGNED')">👤 Entregador encontrado</button>`;
+ if(o.status==='DRIVER_ASSIGNED')return `<button class="btn" onclick="setStatus(${o.id},'OUT_FOR_DELIVERY')">🛵 Saiu para entrega</button>`;
+ if(o.status==='OUT_FOR_DELIVERY')return `<span class="pill">📱 Aguardando cliente confirmar recebimento</span>`;
+ return '<span class="muted">Sem ações</span>';
+}
+function render(){
+ const paid=db.orders.filter(o=>o.payment_status==='PAID');
+ document.getElementById('mPedidos').textContent=db.orders.length;
+ document.getElementById('mVendas').textContent=money(paid.reduce((a,o)=>a+Number(o.total_cents||0)/100,0));
+ document.getElementById('mProdutos').textContent=db.products.filter(p=>p.active).length;
+ document.getElementById('mAndamento').textContent=db.orders.filter(o=>!['DELIVERED','REJECTED'].includes(o.status)).length;
+ document.getElementById('products').innerHTML=db.products.map(p=>`<div class="product row"><div><b>${esc(p.name)}</b><br><span class="muted">${esc(p.category||'Geral')} · estoque ${p.stock} · ${p.active?'Ativo':'Inativo'}</span></div><div><b>${money(p.price)}</b> <button class="btn" onclick="editProduct(${p.id})">Editar</button> <button class="btn ${p.active?'red':'green'}" onclick="toggle(${p.id})">${p.active?'Desativar':'Ativar'}</button></div></div>`).join('')||'<p class="muted">Nenhum produto cadastrado.</p>';
+ document.getElementById('stock').innerHTML=db.products.map(p=>`<div class="product row"><span>${esc(p.name)}</span><b>${p.stock} un.</b><button class="btn" onclick="changeStock(${p.id})">Alterar</button></div>`).join('')||'<p class="muted">Nenhum produto.</p>';
+ const os=db.orders;document.getElementById('orders').innerHTML=os.length?os.map(o=>{const items=Array.isArray(o.items)?o.items:[];return `<div class="card ${o.status==='RECEIVED'?'alert':''}" style="margin-bottom:14px"><div class="row"><h2>Pedido #${o.id}</h2><span class="pill">${L[o.status]||o.status}</span></div><p><b>${esc(o.customer_name)}</b> · ${esc(o.customer_phone)} · ${o.order_type==='DELIVERY'?'🚚 Entrega':'🏪 Retirada'}</p><p>${items.map(i=>i.quantity+'x '+esc(i.name)+' — '+money(Number(i.unit_price_cents)/100)).join('<br>')}</p><b>Total: ${money(Number(o.total_cents)/100)}</b>${o.address?`<p class="muted">${esc(formatAddress(o.address))}</p>`:''}${o.payment_status==='PAID'?'<p class="muted">💳 Pago</p>':'<p class="muted">⏳ Aguardando pagamento</p>'}${o.refund_status==='PENDING_MANUAL'?'<p class="pill" style="background:#fff3cd;color:#7a5b00">⚠️ Estorno pendente no InfinitePay</p>':''}<div style="margin-top:12px">${actions(o)}</div></div>`}).join(''):'<div class="card"><p class="muted">Nenhum pedido recebido.</p></div>';
+ document.getElementById('homeOrders').innerHTML=os.slice(0,4).map(o=>`<div class="product row"><span>#${o.id} · ${L[o.status]||o.status}</span><b>${money(Number(o.total_cents)/100)}</b></div>`).join('')||'<p class="muted">Sem pedidos.</p>';
+ document.getElementById('deliveries').innerHTML=os.filter(o=>['READY','DELIVERY_REQUESTED','DRIVER_ASSIGNED','OUT_FOR_DELIVERY'].includes(o.status)&&o.order_type==='DELIVERY').map(o=>`<div class="product row"><span>Pedido #${o.id}</span><b>${L[o.status]}</b></div>`).join('')||'<p class="muted">Nenhuma entrega em andamento.</p>';
+ document.getElementById('customers').innerHTML=db.customers.map(c=>`<div class="product row"><span>${esc(c.name)}<br><span class="muted">${esc(c.phone)}</span></span><b>${c.orders} pedido(s)</b></div>`).join('')||'<p class="muted">Nenhum cliente ainda.</p>';
+ const f=db.finance||{};document.getElementById('finSales').textContent=money(f.gross);document.getElementById('finNet').textContent=money(f.gross);
+ renderReviews();
+}
+function formatAddress(a){if(typeof a==='string')try{a=JSON.parse(a)}catch{};if(!a||typeof a!=='object')return '';return [a.street,a.number,a.complement,a.neighborhood,a.cep,a.reference?'Ref.: '+a.reference:''].filter(Boolean).join(', ')}
+function renderReviews(){const el=document.getElementById('reviews');if(!el)return;const rs=db.reviews||[];if(!rs.length){el.innerHTML='<p class="muted">Ainda não há avaliações.</p>';return}const rated=rs.filter(r=>r.stars),avg=db.reviewAverage??'—';el.innerHTML=`<div class="notice"><b>⭐ ${avg}</b> média geral · ${rs.length} avaliação${rs.length!==1?'ões':''}</div>`+rs.map(r=>`<div class="card" style="margin:12px 0;background:#faf7fc"><div style="font-size:20px">${r.stars?('★'.repeat(r.stars)+'☆'.repeat(5-r.stars)):'Sem nota'}</div><p>${r.comment||'<span class="muted">Sem comentário.</span>'}</p><span class="muted">Pedido #${r.order_id}</span></div>`).join('')}
+async function refresh(){try{const [products,orders,customers,finance,reviews]=await Promise.all([api('/products'),api('/orders'),api('/customers'),api('/finance'),api('/reviews')]);db.products=products;db.orders=orders;db.customers=customers;db.finance=finance;db.reviews=reviews.reviews||[];db.reviewAverage=reviews.average;alertNewOrders(orders);render()}catch(e){console.error(e);document.getElementById('products').innerHTML='<p class="muted">Não foi possível carregar os dados do Gestor agora.</p>'}}
+async function setStatus(id,status,reason=''){try{await api('/orders/'+id+'/status',{method:'PATCH',body:JSON.stringify({status,reason})});await refresh()}catch(e){alert(e.message)}}
+function accept(id){setStatus(id,'ACCEPTED')}
+async function reject(id){const r=prompt('Motivo da recusa:');if(!r)return;try{const data=await api('/orders/'+id+'/status',{method:'PATCH',body:JSON.stringify({status:'REJECTED',reason:r})});if(data.refundStatus==='PENDING_MANUAL')alert('Pedido recusado.
+
+⚠️ O pagamento NÃO é estornado automaticamente.
+Abra o App InfinitePay, localize esta venda e faça o cancelamento/estorno.
+
+O Gestor marcou o pedido como ESTORNO PENDENTE para você não esquecer.');await refresh()}catch(e){alert(e.message)}}
+async function toggle(id){const p=db.products.find(x=>x.id===id);try{await api('/products/'+id,{method:'PATCH',body:JSON.stringify({active:!p.active})});await refresh()}catch(e){alert(e.message)}}
+function normalizeCategory(v){return String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
+function fillCategorySelect(selected=''){const sel=document.getElementById('pCat');const map=new Map();db.products.forEach(p=>{const raw=String(p.category||'Geral').trim();const key=normalizeCategory(raw);if(key&&!map.has(key))map.set(key,raw)});const cats=[...map.values()].sort((a,b)=>a.localeCompare(b,'pt-BR'));sel.innerHTML='<option value="">Selecione uma categoria</option>'+cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')+'<option value="__new__">➕ Nova categoria...</option>';sel.value=selected||'';document.getElementById('pCatNew').style.display=sel.value==='__new__'?'block':'none';if(sel.value==='__new__')document.getElementById('pCatNew').focus()}
+function categoryChanged(){const sel=document.getElementById('pCat');const n=document.getElementById('pCatNew');n.style.display=sel.value==='__new__'?'block':'none';if(sel.value==='__new__')n.focus()}
+function newProduct(){editId=null;document.getElementById('modalTitle').textContent='Novo produto';document.getElementById('pName').value='';document.getElementById('pPrice').value='';document.getElementById('pStock').value='';document.getElementById('pCatNew').value='';fillCategorySelect('');document.getElementById('modal').classList.add('on')}
+function editProduct(id){const p=db.products.find(x=>x.id===id);editId=id;document.getElementById('modalTitle').textContent='Editar produto';document.getElementById('pName').value=p.name;document.getElementById('pPrice').value=p.price;document.getElementById('pStock').value=p.stock;document.getElementById('pCatNew').value='';fillCategorySelect(p.category||'Geral');document.getElementById('modal').classList.add('on')}
+async function saveProduct(){const n=document.getElementById('pName').value.trim();const price=Number(document.getElementById('pPrice').value);const stock=Number(document.getElementById('pStock').value);const sel=document.getElementById('pCat').value;let category=sel==='__new__'?document.getElementById('pCatNew').value.trim():sel;if(!category)category='Geral';const existing=db.products.find(p=>normalizeCategory(p.category||'Geral')===normalizeCategory(category));if(existing)category=String(existing.category||'Geral').trim();if(!n||!Number.isFinite(price)||price<0)return alert('Informe nome e preço válidos.');try{const body={name:n,price,stock,category,active:true};if(editId)await api('/products/'+editId,{method:'PATCH',body:JSON.stringify(body)});else await api('/products',{method:'POST',body:JSON.stringify(body)});closeModal();await refresh()}catch(e){alert(e.message)}}
+function closeModal(){document.getElementById('modal').classList.remove('on')}
+async function changeStock(id){const p=db.products.find(x=>x.id===id);const v=prompt('Novo estoque:',p.stock);if(v===null)return;const stock=Math.max(0,Math.trunc(Number(v)));if(!Number.isFinite(stock))return;try{await api('/products/'+id,{method:'PATCH',body:JSON.stringify({stock})});await refresh()}catch(e){alert(e.message)}}
+refresh();setInterval(refresh,5000);
+</script></body></html>
