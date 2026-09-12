@@ -28,6 +28,7 @@ const uberAuthUrl = 'https://auth.uber.com/oauth/v2/token';
 const uberApiBase = 'https://api.uber.com';
 
 let uberTokenCache = { token: null, expiresAt: 0 };
+let uberStoreIdCache = ''; 
 async function getUberAccessToken() {
   const clientId = process.env.UBER_DIRECT_CLIENT_ID;
   const clientSecret = process.env.UBER_DIRECT_CLIENT_SECRET;
@@ -156,10 +157,37 @@ app.post('/api/delivery/estimate', async (req,res)=>{
       await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,'BRL',$3,'MOCK',$4)`,[estimateId,feeCents,expiresAt,address]);
       return res.json({provider:'MOCK',estimateId,feeCents,deliveryFee:feeCents/100,currency:'BRL',expiresAt:expiresAt.toISOString()});
     }
-    const storeId = process.env.UBER_DIRECT_STORE_ID;
-    if (!storeId) return res.status(503).json({error:'Uber Direct ainda não está configurado: falta UBER_DIRECT_STORE_ID.'});
     const token = await getUberAccessToken();
     const formatted = deliveryAddressText(address);
+    let storeId = process.env.UBER_DIRECT_STORE_ID || '';
+
+    // Se o Store ID não estiver configurado manualmente, descubra automaticamente
+    // pela API oficial do Uber Direct usando o endereço/CEP do cliente.
+    if (!storeId) {
+      const cepDigits = String(address.cep || '').replace(/\D/g, '');
+      let lat = Number(address.latitude);
+      let lon = Number(address.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        // Centro aproximado do CEP da loja para manter a descoberta geográfica
+        // vinculada à localização cadastrada no Uber Direct.
+        lat = -2.55925;
+        lon = -44.20864;
+      }
+      const qs = new URLSearchParams({ latitude:String(lat), longitude:String(lon), pickup_at:'0' });
+      const sr = await fetch(`${uberApiBase}/v1/eats/deliveries/stores?${qs}`, {
+        headers:{ Authorization:`Bearer ${token}` }
+      });
+      const sd = await sr.json().catch(()=>({}));
+      if (!sr.ok) {
+        const detail = sd?.message || sd?.code || `HTTP ${sr.status}`;
+        return res.status(502).json({error:`Uber Direct não conseguiu localizar a loja (${detail}).`,providerStatus:sr.status,providerCode:sd?.code||null});
+      }
+      storeId = sd?.stores?.[0]?.store_id || '';
+      uberStoreIdCache = storeId;
+      if (!storeId) return res.status(502).json({error:'Uber Direct não retornou uma loja disponível para este endereço.'});
+      console.log('Uber Direct Store ID descoberto automaticamente:', storeId, 'CEP:', cepDigits);
+    }
+
     const payload = { pickup:{store_id:storeId}, dropoff_address:{formatted_address:formatted}, pickup_times:[0] };
     if (Number(orderValueCents)>0) payload.order_summary={currency_code:'BRL',order_value:Math.round(Number(orderValueCents))};
     const r = await fetch(`${uberApiBase}/v1/eats/deliveries/estimates`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});
