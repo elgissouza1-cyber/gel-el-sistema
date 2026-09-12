@@ -28,6 +28,19 @@ const storeUrl = () => process.env.PUBLIC_STORE_URL || publicBase() || 'https://
 async function initDb() {
   const schema = await fs.readFile(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
   await pool.query(schema);
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
+  if (rows[0].count === 0) {
+    await pool.query(`
+      INSERT INTO products (name, description, price_cents, category, stock, active) VALUES
+      ('Maracujá com gotas','',400,'Geladinhos',20,true),
+      ('Maracujá trufado','',500,'Geladinhos',20,true),
+      ('Ninho com morango','',500,'Geladinhos',15,true),
+      ('Prestígio','',500,'Geladinhos',18,true),
+      ('Cupuaçu ao leite','',400,'Geladinhos',12,true),
+      ('Pudim','',500,'Sobremesas',10,true)
+    `);
+    console.log('Produtos iniciais carregados no banco.');
+  }
 }
 
 app.get('/api/health', async (_req, res) => {
