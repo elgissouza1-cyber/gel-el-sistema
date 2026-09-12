@@ -28,6 +28,33 @@ const storeUrl = () => process.env.PUBLIC_STORE_URL || publicBase() || 'https://
 async function initDb() {
   const schema = await fs.readFile(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
   await pool.query(schema);
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
+  if (rows[0].count === 0) {
+    await pool.query(`
+      INSERT INTO products (name, description, price_cents, category, stock, active) VALUES
+      ('Maracujá com gotas','',400,'Geladinhos',20,true),
+      ('Maracujá trufado','',500,'Geladinhos',20,true),
+      ('Ninho com morango','',500,'Geladinhos',15,true),
+      ('Prestígio','',500,'Geladinhos',18,true),
+      ('Cupuaçu ao leite','',400,'Geladinhos',12,true),
+      ('Pudim','',500,'Sobremesas',10,true)
+    `);
+    console.log('Produtos iniciais carregados no banco.');
+  } else {
+    // Corrige registros antigos que chegaram ao banco com preço zerado.
+    await pool.query(`
+      UPDATE products SET price_cents = CASE name
+        WHEN 'Maracujá com gotas' THEN 400
+        WHEN 'Maracujá trufado' THEN 500
+        WHEN 'Ninho com morango' THEN 500
+        WHEN 'Prestígio' THEN 500
+        WHEN 'Cupuaçu ao leite' THEN 400
+        WHEN 'Pudim' THEN 500
+        ELSE price_cents END,
+        updated_at=NOW()
+      WHERE price_cents <= 0 AND name IN ('Maracujá com gotas','Maracujá trufado','Ninho com morango','Prestígio','Cupuaçu ao leite','Pudim')
+    `);
+  }
 }
 
 app.get('/api/health', async (_req, res) => {
@@ -100,7 +127,7 @@ async function handleIncomingWhatsApp(from, text) {
 // ---------- Customer / order API ----------
 app.get('/api/products', async (_req, res) => {
   const { rows } = await pool.query(`SELECT id,name,description,price_cents,category,photo_url,stock,active FROM products WHERE active=true ORDER BY id`);
-  res.json(rows.map(p => ({ ...p, price: moneyPayload(p.price_cents) })));
+  res.json(rows.map(p => ({ ...p, price: p.price_cents / 100 })));
 });
 
 app.get('/api/reviews', async (_req, res) => {
@@ -172,6 +199,48 @@ app.post('/api/webhooks/infinitepay', async (req, res) => {
 app.get('/api/orders/:id', async (req,res)=>{ const {rows}=await pool.query(`SELECT o.*,COALESCE(json_agg(json_build_object('productId',oi.product_id,'name',oi.product_name,'quantity',oi.quantity,'unitPriceCents',oi.unit_price_cents)) FILTER (WHERE oi.id IS NOT NULL),'[]') items FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id WHERE o.id=$1 GROUP BY o.id`,[req.params.id]); if(!rows.length)return res.status(404).json({error:'Pedido não encontrado.'}); res.json(rows[0]); });
 app.post('/api/orders/:id/confirm-receipt', async (req,res)=>{ const r=await pool.query(`UPDATE orders SET status='DELIVERED',customer_confirmed_at=NOW(),delivered_at=NOW() WHERE id=$1 AND status='OUT_FOR_DELIVERY' AND payment_status='PAID' RETURNING id,status,customer_confirmed_at`,[req.params.id]); if(!r.rowCount)return res.status(409).json({error:'Pedido não está aguardando confirmação.'}); res.json(r.rows[0]); });
 app.post('/api/orders/:id/review', async (req,res)=>{ const {stars=null,comment=''}=req.body||{}; if(stars!==null&&(!Number.isInteger(stars)||stars<1||stars>5))return res.status(400).json({error:'Nota inválida.'}); const order=await pool.query(`SELECT id,status,customer_confirmed_at FROM orders WHERE id=$1`,[req.params.id]); if(!order.rowCount||order.rows[0].status!=='DELIVERED'||!order.rows[0].customer_confirmed_at)return res.status(403).json({error:'Só é possível avaliar após confirmar o recebimento.'}); try{const r=await pool.query(`INSERT INTO reviews(order_id,stars,comment) VALUES($1,$2,$3) RETURNING *`,[req.params.id,stars,comment?.trim()||'']);res.status(201).json(r.rows[0]);}catch(e){if(e.code==='23505')return res.status(409).json({error:'Este pedido já foi avaliado.'});res.status(500).json({error:'Não foi possível salvar a avaliação.'});} });
+
+
+// ---------- Gestor API ----------
+app.get('/api/gestor/orders', async (_req,res)=>{
+  const {rows}=await pool.query(`SELECT o.*,COALESCE(json_agg(json_build_object('productId',oi.product_id,'name',oi.product_name,'quantity',oi.quantity,'unitPriceCents',oi.unit_price_cents,'subtotalCents',oi.subtotal_cents)) FILTER (WHERE oi.id IS NOT NULL),'[]') items FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`);
+  res.json(rows);
+});
+app.get('/api/gestor/products', async (_req,res)=>{
+  const {rows}=await pool.query(`SELECT id,name,description,price_cents,category,photo_url,stock,active FROM products ORDER BY id`);
+  res.json(rows.map(p=>({...p,price:p.price_cents/100})));
+});
+app.patch('/api/gestor/products/:id', async (req,res)=>{
+  const {name,description,price,category,photo_url,active,stock}=req.body||{};
+  const priceCents=price==null?null:Math.round(Number(price)*100);
+  const {rows}=await pool.query(`UPDATE products SET name=COALESCE($1,name),description=COALESCE($2,description),price_cents=COALESCE($3,price_cents),category=COALESCE($4,category),photo_url=COALESCE($5,photo_url),active=COALESCE($6,active),stock=COALESCE($7,stock),updated_at=NOW() WHERE id=$8 RETURNING id,name,description,price_cents,category,photo_url,stock,active`,[name??null,description??null,priceCents,category??null,photo_url??null,active??null,stock==null?null:Math.max(0,Math.trunc(Number(stock))),req.params.id]);
+  if(!rows.length)return res.status(404).json({error:'Produto não encontrado.'}); res.json({...rows[0],price:rows[0].price_cents/100});
+});
+app.post('/api/gestor/products', async (req,res)=>{
+  const {name,description='',price,category='',photo_url='',stock=0,active=true}=req.body||{};
+  if(!name||price==null)return res.status(400).json({error:'Nome e preço são obrigatórios.'});
+  const {rows}=await pool.query(`INSERT INTO products(name,description,price_cents,category,photo_url,stock,active) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[name.trim(),description,Math.round(Number(price)*100),category,photo_url,Math.max(0,Math.trunc(Number(stock))),Boolean(active)]);
+  res.status(201).json({...rows[0],price:rows[0].price_cents/100});
+});
+app.patch('/api/gestor/orders/:id/status', async (req,res)=>{
+  const allowed=['RECEIVED','ACCEPTED','PREPARING','READY','DELIVERY_REQUESTED','DRIVER_ASSIGNED','OUT_FOR_DELIVERY','DELIVERED','REJECTED'];
+  const {status,reason=''}=req.body||{}; if(!allowed.includes(status))return res.status(400).json({error:'Status inválido.'});
+  if(status==='DELIVERED') {
+    const check=await pool.query('SELECT order_type,payment_status FROM orders WHERE id=$1',[req.params.id]);
+    if(!check.rowCount) return res.status(404).json({error:'Pedido não encontrado.'});
+    if(check.rows[0].order_type==='DELIVERY') return res.status(403).json({error:'Pedido de entrega só pode ser finalizado pela confirmação do cliente.'});
+    if(check.rows[0].payment_status!=='PAID') return res.status(409).json({error:'O pedido ainda não foi pago.'});
+  }
+  const {rows}=await pool.query(`UPDATE orders SET status=$1, delivered_at=CASE WHEN $1='DELIVERED' THEN NOW() ELSE delivered_at END WHERE id=$2 RETURNING id,status`,[status,req.params.id]);
+  if(!rows.length)return res.status(404).json({error:'Pedido não encontrado.'}); res.json(rows[0]);
+});
+app.get('/api/gestor/customers', async (_req,res)=>{
+  const {rows}=await pool.query(`SELECT c.id,c.name,c.phone,COUNT(o.id)::int orders,COALESCE(SUM(CASE WHEN o.payment_status='PAID' THEN o.total_cents ELSE 0 END),0)::int total_cents FROM customers c LEFT JOIN orders o ON o.customer_id=c.id GROUP BY c.id ORDER BY c.created_at DESC`); res.json(rows.map(x=>({...x,total:x.total_cents/100})));
+});
+app.get('/api/gestor/finance', async (_req,res)=>{
+  const {rows}=await pool.query(`SELECT COALESCE(SUM(CASE WHEN payment_status='PAID' THEN total_cents ELSE 0 END),0)::int gross_cents,COUNT(*)::int orders,COALESCE(AVG(CASE WHEN payment_status='PAID' THEN total_cents END),0)::int avg_ticket_cents FROM orders`); res.json({...rows[0],gross:rows[0].gross_cents/100,avgTicket:rows[0].avg_ticket_cents/100});
+});
+app.get('/api/gestor/reviews', async (_req,res)=>{ const {rows}=await pool.query(`SELECT r.id,r.stars,r.comment,r.created_at,r.order_id FROM reviews r JOIN orders o ON o.id=r.order_id WHERE o.payment_status='PAID' AND o.customer_confirmed_at IS NOT NULL ORDER BY r.created_at DESC`); const rated=rows.filter(x=>x.stars); const average=rated.length?Number((rated.reduce((a,x)=>a+x.stars,0)/rated.length).toFixed(1)):null; res.json({average,total:rows.length,reviews:rows}); });
 
 // ---------- Public legal pages for Meta and customers ----------
 app.get('/politica-de-privacidade', (_req,res)=>res.sendFile(path.join(root,'public','politica-de-privacidade.html')));
