@@ -39,6 +39,3 @@ Quando o cliente pede atendente, `human_mode` é ativado e o bot fica em silênc
 
 ## Lalamove
 Configure `DELIVERY_PROVIDER=lalamove`, as credenciais `LALAMOVE_API_KEY` e `LALAMOVE_API_SECRET`, `LALAMOVE_MARKET=BR`, `LALAMOVE_LANGUAGE=pt_BR`, `LALAMOVE_SERVICE_TYPE=LALAGO`, `LALAMOVE_SENDER_PHONE` e os dados fixos de retirada. O webhook usa `/api/webhooks/lalamove`.
-
-
-Correção de Lalamove (13/09/2026): o ponto de retirada padrão foi ajustado para coordenadas na mesma Rua Nossa Senhora da Conceição/Santa Clara (lat -2.6011038, lng -44.2012556), porque o CEP retornava coordenadas IBGE de referência que não correspondiam ao trecho da rua usado pela loja, causando ERR_REVERSE_GEOCODE_FAILURE.
