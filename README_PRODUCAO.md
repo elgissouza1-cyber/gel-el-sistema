@@ -38,4 +38,4 @@ Quando o cliente pede atendente, `human_mode` é ativado e o bot fica em silênc
 
 
 ## Lalamove
-Configure `DELIVERY_PROVIDER=lalamove`, as credenciais `LALAMOVE_API_KEY` e `LALAMOVE_API_SECRET`, `LALAMOVE_MARKET=BR`, `LALAMOVE_LANGUAGE=pt_BR`, `LALAMOVE_SERVICE_TYPE=MOTORCYCLE`, `LALAMOVE_SENDER_PHONE` e os dados fixos de retirada. O webhook usa `/api/webhooks/lalamove`.
+Configure `DELIVERY_PROVIDER=lalamove`, as credenciais `LALAMOVE_API_KEY` e `LALAMOVE_API_SECRET`, `LALAMOVE_MARKET=BR`, `LALAMOVE_LANGUAGE=pt_BR`, `LALAMOVE_SERVICE_TYPE=LALAGO`, `LALAMOVE_SENDER_PHONE` e os dados fixos de retirada. O webhook usa `/api/webhooks/lalamove`.
