@@ -1,158 +1,115 @@
 <!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Gel & El — Cardápio e Pedidos</title>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meu Pedido AI — Gestor</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#faf7fc;color:#302538}
-header{background:#fff;border-bottom:1px solid #e7e0ea;padding:16px 22px;position:sticky;top:0;z-index:10}
-.head{max-width:1180px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:15px}.brand{font-size:23px;font-weight:800;color:#704095}
-.container{max-width:1180px;margin:auto;padding:20px}.grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,.75fr);gap:18px}
-.card{background:#fff;border-radius:17px;padding:20px;box-shadow:0 2px 12px #00000010;margin-bottom:18px}
-.categories{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.cat{border:0;padding:9px 13px;border-radius:20px;background:#eee5f2;cursor:pointer}.cat.active{background:#704095;color:#fff;font-weight:700}
-.product{display:flex;gap:15px;align-items:center;border-top:1px solid #eee;padding:16px 0}.pic{width:82px;height:82px;border-radius:13px;background:#eee4f3;display:flex;align-items:center;justify-content:center;font-size:30px}.info{flex:1}.price{font-weight:800;font-size:17px;margin-top:5px}.muted{color:#777;font-size:13px}
-.btn{border:0;border-radius:10px;padding:11px 14px;background:#704095;color:white;font-weight:700;cursor:pointer}.btn.gray{background:#e9e2ed;color:#44354c}.btn.green{background:#3d8651}.btn.red{background:#b33}
-input,select{width:100%;padding:11px;border:1px solid #ccc;border-radius:9px;margin:5px 0 12px}
-label{font-weight:700;font-size:13px}.total{font-size:20px;font-weight:800}.line{display:flex;justify-content:space-between;gap:10px;margin:10px 0}.radio{border:1px solid #ddd;border-radius:11px;padding:12px;margin:8px 0;cursor:pointer}.radio.sel{border:2px solid #704095;background:#faf4fd}.radio input{width:auto;margin:0 8px 0 0}
-.cartline{border-top:1px solid #eee;padding:11px 0}.qty{display:flex;align-items:center;gap:8px;margin-top:7px}.qty button{border:0;border-radius:7px;padding:5px 9px;cursor:pointer}
-.steps{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}.step{padding:7px 9px;border-radius:18px;background:#eee;font-size:12px}.step.on{background:#704095;color:#fff;font-weight:700}
-.notice{background:#f6eff9;border-radius:12px;padding:12px}.hidden{display:none}.checkout-stage{display:none}.checkout-stage.on{display:block}.stagebar{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 18px}.stage{flex:1;min-width:120px;text-align:center;padding:9px;border-radius:10px;background:#eee5f2;color:#6b5b72;font-size:12px;font-weight:700}.stage.on{background:#704095;color:#fff}.cart-drawer{display:none}.checkout-overlay{display:none;position:fixed;inset:0;background:rgba(40,20,50,.45);z-index:1000;padding:20px;overflow:auto}.checkout-overlay.on{display:flex;align-items:flex-start;justify-content:center}.checkout-modal{width:min(620px,100%);margin:20px auto}.close-checkout{float:right;border:0;background:#eee5f2;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer}.summary-box{background:#faf7fc;border:1px solid #eee3f2;border-radius:12px;padding:12px;margin:12px 0}.rating{font-size:24px;letter-spacing:2px;cursor:pointer}.rating span{opacity:.25}.rating span.sel{opacity:1}.product-rating{font-size:13px;margin-top:4px}.payment-badge{display:inline-block;background:#f0e7f6;color:#704095;padding:5px 9px;border-radius:15px;font-size:12px;font-weight:700}
-@media(max-width:850px){.grid{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column}}
-</style>
-</head>
-<body>
-<header><div class="head"><div><div class="brand">Gel & El Suquinhos Gourmet</div><div class="muted">Seu pedido, do jeitinho que você gosta 💜</div></div><button class="btn" onclick="openCart()">🛒 Ver compras (<span id="cartCount">0</span>)</button></div></header>
+*{box-sizing:border-box}body{margin:0;font:14px Arial;background:#f6f3f8;color:#2d2432}.top{height:64px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;padding:0 22px;position:sticky;top:0;z-index:5}.brand{font-size:21px;font-weight:800;color:#704095}.layout{display:flex;min-height:calc(100vh - 64px)}aside{width:220px;background:#302538;color:#fff;padding:18px 12px}aside button{display:block;width:100%;text-align:left;border:0;background:transparent;color:#eee;padding:12px;border-radius:9px;cursor:pointer;margin:3px 0}aside button:hover,aside button.on{background:#704095}.content{flex:1;padding:24px;max-width:1250px}.view{display:none}.view.on{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:15px}.card{background:#fff;border-radius:15px;padding:18px;box-shadow:0 2px 12px #0001}.metric{font-size:26px;font-weight:800;margin-top:8px}.muted{color:#777}.btn{border:0;border-radius:9px;padding:10px 13px;background:#704095;color:#fff;font-weight:700;cursor:pointer}.btn.red{background:#b23b3b}.btn.green{background:#3d8651}.btn.gray{background:#e9e2ed;color:#44354c}.btn+ .btn{margin-left:6px}.product,.order{border-top:1px solid #eee;padding:14px 0}.row{display:flex;align-items:center;gap:10px;justify-content:space-between}.pill{padding:5px 9px;border-radius:20px;background:#eee2f5;font-weight:700;font-size:12px}.alert{border:2px solid #704095;background:#fcf7ff}.modal{position:fixed;inset:0;background:#0006;display:none;align-items:center;justify-content:center;z-index:20}.modal.on{display:flex}.modalbox{background:#fff;padding:24px;border-radius:16px;width:min(500px,90%)}input,select{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;margin:6px 0 12px}
+@media(max-width:700px){aside{width:62px}aside button{font-size:0;text-align:center}aside button:first-letter{font-size:18px}.content{padding:14px}}
+</style></head><body>
+<div class="top"><div class="brand">Meu Pedido AI · Gestor</div><div>🟢 Loja online</div></div>
+<div class="layout"><aside>
+<button class="on" onclick="page('inicio',this)">🏠 Início</button>
+<button onclick="page('pedidos',this)">🧾 Pedidos</button>
+<button onclick="page('produtos',this)">🍧 Produtos</button>
+<button onclick="page('estoque',this)">📦 Estoque</button>
+<button onclick="page('entregas',this)">🚚 Entregas</button>
+<button onclick="page('promocoes',this)">🏷️ Promoções</button>
+<button onclick="page('clientes',this)">👥 Clientes</button>
+<button onclick="page('financeiro',this)">💰 Financeiro</button>
+<button onclick="page('avaliacoes',this)">⭐ Avaliações</button>
+<button onclick="page('whatsapp',this)">💬 WhatsApp</button>
+<button onclick="page('config',this)">⚙️ Configurações</button>
+</aside><main class="content">
 
-<main class="container">
-<div class="grid">
-<section>
-<div class="card">
-<h2>Cardápio</h2>
-<div class="categories" id="categories"></div>
-<div id="menu"></div>
-</div>
-</section>
+<section id="inicio" class="view on"><h1>Visão geral</h1><div class="grid">
+<div class="card"><span class="muted">Pedidos hoje</span><div class="metric" id="mPedidos">0</div></div>
+<div class="card"><span class="muted">Vendas</span><div class="metric" id="mVendas">R$ 0,00</div></div>
+<div class="card"><span class="muted">Produtos ativos</span><div class="metric" id="mProdutos">0</div></div>
+<div class="card"><span class="muted">Pedidos em andamento</span><div class="metric" id="mAndamento">0</div></div>
+</div><br><div class="card"><h2>Últimos pedidos</h2><div id="homeOrders"></div></div></section>
 
-<aside>
-<div id="checkoutOverlay" class="checkout-overlay" onclick="if(event.target===this) closeCart()">
-  <div class="checkout-modal">
-    <div class="card" id="checkout">
-      <button class="close-checkout" onclick="closeCart()" aria-label="Fechar">×</button>
-      <h2>🛒 Finalizar pedido</h2>
-      <div class="stagebar"><div id="st1" class="stage on">1. Carrinho</div><div id="st2" class="stage">2. Dados</div><div id="st3" class="stage">3. Pagamento</div></div>
+<section id="pedidos" class="view"><div class="row"><h1>Gestor de pedidos</h1><button class="btn gray" id="soundBtn" onclick="toggleSound()">🔊 Som: ativado</button></div><div class="card" style="margin-bottom:14px"><b id="pollStatus">Conectando aos pedidos...</b><div class="muted">O Gestor atualiza automaticamente. Um novo pedido toca um alerta sonoro.</div></div><div id="orders"></div></section>
 
-      <div id="stage1" class="checkout-stage on">
-      <div id="cart"></div>
-      <button class="btn" style="width:100%;font-size:16px" onclick="goStage(2)">AVANÇAR</button>
-      </div>
+<section id="produtos" class="view"><div class="row"><h1>Produtos</h1><button class="btn" onclick="newProduct()">+ Novo produto</button></div><div class="card"><div id="products"></div></div></section>
 
-      <div id="stage2" class="checkout-stage">
-      <div class="summary-box"><b>Seu pedido</b><div id="miniSummary"></div></div>
-      <h3>👤 Seus dados</h3>
-      <label>Nome</label><input id="customerName" placeholder="Seu nome">
-      <label>WhatsApp</label><input id="customerPhone" placeholder="(98) 99999-9999">
-      <h3>📍 Entrega ou retirada</h3>
-      <div class="radio sel" id="rDelivery" onclick="setType('DELIVERY')"><input type="radio" name="type" checked> 🚚 <b>Receber em casa</b><br><span class="muted">Informe o CEP para calcular a entrega.</span></div>
-      <div class="radio" id="rPickup" onclick="setType('PICKUP')"><input type="radio" name="type"> 🏪 <b>Retirar na loja</b><br><span class="muted">Sem taxa de entrega.</span></div>
-      <div id="addressBox">
-      <label>CEP</label><input id="cep" placeholder="00000-000" maxlength="9" onblur="lookupCep()">
-      <label>Rua</label><input id="street">
-      <label>Número</label><input id="number" placeholder="Ex.: 100" onblur="maybeQuote()">
-      <label>Complemento</label><input id="complement" placeholder="Apartamento, casa, referência..." onblur="maybeQuote()">
-      <label>Bairro</label><input id="neighborhood">
-      <button class="btn" type="button" style="width:100%;margin-top:8px" onclick="calculateDeliveryQuote()">CALCULAR VALOR DA ENTREGA</button>
-      </div>
-      <div class="summary-box" id="addressTotal"></div>
-      <div style="display:flex;gap:8px"><button class="btn gray" onclick="goStage(1)">VOLTAR</button><button class="btn" style="flex:1" onclick="goStage(3)">IR PARA PAGAMENTO</button></div>
-      </div>
+<section id="estoque" class="view"><h1>Estoque</h1><div class="card"><div id="stock"></div></div></section>
 
-      <div id="stage3" class="checkout-stage">
-      <div class="summary-box" id="paymentSummary"></div>
-      <h3>💳 Pagamento online</h3>
-      <div class="payment-badge">InfinitePay • Pix e cartão</div>
-      <div class="radio sel" id="pPix" onclick="setPayment('PIX')"><input type="radio" name="pay" checked> <b>PIX</b><br><span class="muted">Pagamento instantâneo</span></div>
-      <div class="radio" id="pCard" onclick="setPayment('CARD')"><input type="radio" name="pay"> <b>Cartão</b><br><span class="muted">Você escolherá a forma de pagamento na página segura da InfinitePay.</span></div>
-      <div class="notice">🔒 Você será encaminhado para o checkout seguro da InfinitePay. Os dados do cartão não são armazenados pela Gel & El.</div>
-      <div style="display:flex;gap:8px"><button class="btn gray" onclick="goStage(2)">VOLTAR</button><button class="btn" style="flex:1" onclick="placeOrder()">PAGAR PEDIDO</button></div>
-      </div>
-    </div>
-  </div>
-</div>
+<section id="entregas" class="view"><h1>Entregas</h1><div class="card"><p>Pedidos em entrega ficam aqui. Quando o pedido sair para entrega, o fechamento será feito pela confirmação do cliente.</p><div id="deliveries"></div></div></section>
 
-<div class="card">
-<h2>📦 Acompanhar pedido</h2>
-<div id="track">Faça um pedido para acompanhar o status.</div>
-<div id="ratingBox" class="hidden"></div>
-</div>
+<section id="promocoes" class="view"><h1>Promoções</h1><div class="grid"><div class="card"><h3>Desconto</h3><p>Crie descontos por produto ou pedido.</p><button class="btn" onclick="alert('Módulo de criação de promoções preparado para a próxima integração.')">Criar promoção</button></div><div class="card"><h3>Combos</h3><p>Monte combinações com preço promocional.</p><button class="btn">Novo combo</button></div></div></section>
 
-<div class="card" style="margin-top:14px"><h2>⭐ Avaliações dos clientes</h2><p class="muted">Veja o que outros clientes acharam da experiência com a Gel & El.</p><div id="publicReviews"></div></div>
-</aside>
-</div>
-</main>
+<section id="clientes" class="view"><h1>Clientes</h1><div class="card"><p>Clientes e histórico de pedidos serão registrados automaticamente.</p><div id="customers"></div></div></section>
 
+<section id="avaliacoes" class="view"><h1>⭐ Avaliações dos pedidos</h1><div class="card"><p class="muted">Veja as notas e comentários deixados pelos clientes depois de confirmarem o recebimento. A avaliação é da experiência com o pedido inteiro.</p><div id="reviews"></div></div></section>
+
+<section id="whatsapp" class="view"><div class="row"><h1>💬 Atendimento WhatsApp</h1><button class="btn gray" onclick="loadWhatsapp()">Atualizar</button></div><div class="card"><p class="muted">Quando um cliente pedir atendente, o bot para. Cada resposta enviada por aqui reinicia os 5 minutos. Depois de 5 minutos sem nova resposta humana, o bot volta a assumir.</p><div id="waConversations"></div></div></section>
+
+<section id="financeiro" class="view"><h1>Financeiro</h1><div class="grid"><div class="card"><span class="muted">Faturamento</span><div class="metric" id="finSales">R$ 0,00</div></div><div class="card"><span class="muted">Taxas</span><div class="metric">R$ 0,00</div></div><div class="card"><span class="muted">Resultado estimado</span><div class="metric" id="finNet">R$ 0,00</div></div></div></section>
+
+<section id="config" class="view"><h1>Configurações da loja</h1><div class="card"><label>Nome da loja</label><input value="Gel & El Suquinhos Gourmet"><label>Pedido mínimo</label><input value="0,00"><label>Entrega</label><select><option>Ativa</option><option>Somente retirada</option></select><button class="btn" onclick="alert('Configuração salva nesta demonstração.')">Salvar configurações</button></div></section>
+
+</main></div>
+<div id="modal" class="modal"><div class="modalbox"><h2 id="modalTitle">Produto</h2><label>Nome</label><input id="pName"><label>Preço</label><input id="pPrice" type="number" step=".01"><label>Estoque</label><input id="pStock" type="number"><label>Categoria</label><input id="pCat"><br><button class="btn" onclick="saveProduct()">Salvar</button> <button class="btn gray" onclick="closeModal()">Cancelar</button></div></div>
 <script>
 const API='/api';
-let products=[],cart=JSON.parse(localStorage.getItem('mpai_client_cart')||'[]');
-let type='DELIVERY',payment='PIX',cat='Todos',deliveryFee=null,deliveryEstimateId=null,deliveryQuoteExpiresAt=null,cepValid=false,stage=1,activeOrderId=localStorage.getItem('mpai_order_id')||null,selectedStars=null,cepData={};
-const statusNames={PENDING_PAYMENT:'Aguardando pagamento',RECEIVED:'Pedido recebido',ACCEPTED:'Pedido aceito pela loja',PREPARING:'Seu pedido está sendo preparado',READY:'Pedido pronto',DELIVERY_REQUESTED:'Entregador sendo solicitado',DRIVER_ASSIGNED:'Entregador encontrado',OUT_FOR_DELIVERY:'Saiu para entrega',DELIVERED:'Pedido entregue',REJECTED:'Pedido recusado'};
-function money(v){return 'R$ '+Number(v||0).toFixed(2).replace('.',',')}
-function clearDeliveryQuote(){deliveryFee=null;deliveryEstimateId=null;deliveryQuoteExpiresAt=null}
-function saveCart(){localStorage.setItem('mpai_client_cart',JSON.stringify(cart));if(type==='DELIVERY')clearDeliveryQuote();render()}
-function calc(){return cart.reduce((sum,i)=>{let p=products.find(x=>x.id==i.id);return sum+(p?p.price*i.qty:0)},0)}
-async function loadProducts(){try{let r=await fetch(API+'/products',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);products=await r.json();render()}catch(e){console.error('Falha ao carregar cardápio:',e);document.getElementById('menu').innerHTML='<p class="muted">Não foi possível carregar o cardápio agora.</p>'}}
-async function loadReviews(){try{let r=await fetch(API+'/reviews');let d=await r.json();let el=document.getElementById('publicReviews');let rs=d.reviews||[];if(!rs.length){el.innerHTML='<p class="muted">Ainda não há avaliações. Seja o primeiro a contar como foi sua experiência! 💜</p>';return}el.innerHTML=`<div class="notice"><b>⭐ ${d.average??'—'}</b> média geral · ${d.total} avaliação${d.total>1?'ões':''}</div>`+rs.map(r=>`<div style="border-top:1px solid #eee;padding:12px 0">${r.stars?`<div style="font-size:19px">${'★'.repeat(r.stars)}${'☆'.repeat(5-r.stars)}</div>`:''}${r.comment?`<p style="margin:6px 0">“${escapeHtml(r.comment)}”</p>`:'<p class="muted">Cliente não deixou comentário.</p>'}<span class="muted">Experiência com o pedido #${r.order_id}</span></div>`).join('') }catch(e){}}
-function escapeHtml(x){return String(x).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function goStage(n){if(n===2&&!cart.length)return alert('Adicione produtos ao carrinho.');if(n===3){let name=document.getElementById('customerName').value.trim(),phone=document.getElementById('customerPhone').value.trim();if(!name||!phone)return alert('Informe nome e WhatsApp.');if(type==='DELIVERY'&&!cepValid)return alert('Informe um CEP válido para calcular a entrega.');if(type==='DELIVERY' && (!deliveryEstimateId || deliveryFee==null))return alert('Calcule o valor da entrega antes de continuar.');
- if(type==='DELIVERY' && deliveryQuoteExpiresAt && Date.now()>=deliveryQuoteExpiresAt)return alert('A cotação da entrega expirou. Calcule novamente.');}stage=n;[1,2,3].forEach(x=>{document.getElementById('stage'+x).classList.toggle('on',x===n);document.getElementById('st'+x).classList.toggle('on',x===n)});render()}
+let db={products:[],orders:[],customers:[],reviews:[]};
+let liveOrders=[];
+let soundEnabled=true;
+let knownReceived=new Set();
+let audioCtx=null;
+function money(v){return 'R$ '+Number(v).toFixed(2).replace('.',',')}
+function fmtDate(v){if(!v)return '—'; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}
+function normalizeProduct(p){return {...p,cat:p.category||p.cat||'Geral',price:Number(p.price??((p.price_cents||0)/100)),stock:Number(p.stock||0),active:Boolean(p.active)}}
+function page(id,b){document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('aside button').forEach(x=>x.classList.remove('on'));if(b)b.classList.add('on'); if(id==='pedidos')loadLiveOrders(); if(id==='whatsapp')loadWhatsapp(); render();}
+const L={PENDING_PAYMENT:'Pagamento pendente',RECEIVED:'🔔 Novo pedido',ACCEPTED:'Aceito',PREPARING:'Preparando',READY:'Pronto',DELIVERY_REQUESTED:'Entrega solicitada',DRIVER_ASSIGNED:'Entregador encontrado',OUT_FOR_DELIVERY:'Saiu para entrega',DELIVERED:'Finalizado',REJECTED:'Recusado'};
+function enableAudio(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}}
+window.addEventListener('pointerdown',enableAudio,{once:false});window.addEventListener('keydown',enableAudio,{once:false});
+function beep(){if(!soundEnabled)return;try{enableAudio();if(!audioCtx)return;const now=audioCtx.currentTime;[0,.18,.36].forEach((offset,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=i===1?1046:880;g.gain.setValueAtTime(.0001,now+offset);g.gain.exponentialRampToValueAtTime(.12,now+offset+.02);g.gain.exponentialRampToValueAtTime(.0001,now+offset+.15);o.connect(g);g.connect(audioCtx.destination);o.start(now+offset);o.stop(now+offset+.16)})}catch(e){console.warn('Som indisponível',e)}}
+function toggleSound(){soundEnabled=!soundEnabled;const b=document.getElementById('soundBtn');if(b)b.textContent=soundEnabled?'🔊 Som: ativado':'🔇 Som: desativado';if(soundEnabled)beep()}
 function render(){
- let cats=['Todos',...new Set(products.filter(p=>p.active&&p.stock>0).map(p=>p.category||'Geral'))];document.getElementById('categories').innerHTML=cats.map(c=>`<button class="cat ${c===cat?'active':''}" onclick="cat='${escapeHtml(c)}';render()">${escapeHtml(c)}</button>`).join('');
- let ps=products.filter(p=>p.active&&p.stock>0&&(cat==='Todos'||(p.category||'Geral')===cat));document.getElementById('menu').innerHTML=ps.map(p=>`<div class="product"><div class="pic">🍧</div><div class="info"><b>${escapeHtml(p.name)}</b><div class="muted">${escapeHtml(p.category||'Geral')}</div><div class="price">${money(p.price)}</div></div><button class="btn" onclick="add(${p.id})">Adicionar</button></div>`).join('')||'<p class="muted">Nenhum produto disponível.</p>';
- document.getElementById('cartCount').textContent=cart.reduce((a,i)=>a+i.qty,0);let sub=calc(),fee=type==='PICKUP'?0:(cepValid&&deliveryFee!=null?deliveryFee:0),total=sub+fee;
- document.getElementById('cart').innerHTML=cart.length?cart.map(i=>{let p=products.find(x=>x.id==i.id);if(!p)return '';let t=p.price*i.qty;return `<div class="cartline"><b>${escapeHtml(p.name)}</b><div class="line"><span>${money(p.price)} cada</span><b>${money(t)}</b></div><div class="qty"><button onclick="changeQty(${p.id},-1)">−</button><b>${i.qty}</b><button onclick="changeQty(${p.id},1)">+</button><button class="btn red" style="padding:5px 9px" onclick="remove(${p.id})">Remover</button></div></div>`}).join('')+`<hr><div class="line"><span>Subtotal</span><b>${money(sub)}</b></div><div class="line"><span>Taxa de entrega</span><span>${type==='PICKUP'?'R$ 0,00':(deliveryFee==null?'Calcule a entrega':money(fee))}</span></div><div class="line total"><span>Total</span><b>${money(total)}</b></div>`:'<p class="muted">Seu carrinho está vazio.</p>';
- document.getElementById('miniSummary').innerHTML=cart.map(i=>{let p=products.find(x=>x.id==i.id);return p?`<div class="line"><span>${i.qty}x ${escapeHtml(p.name)}</span><b>${money(p.price*i.qty)}</b></div>`:''}).join('');
- document.getElementById('addressTotal').innerHTML=`<div class="line"><span>Subtotal</span><b>${money(sub)}</b></div><div class="line"><span>Entrega</span><b>${type==='PICKUP'?'R$ 0,00':(deliveryFee==null?'Calcule a entrega':money(fee))}</b></div><div class="line total"><span>Total</span><b>${money(total)}</b></div>`;
- document.getElementById('paymentSummary').innerHTML=`<div class="line"><span>Produtos</span><b>${money(sub)}</b></div><div class="line"><span>Entrega</span><b>${money(fee)}</b></div><div class="line total"><span>Total a pagar</span><b>${money(total)}</b></div>`;
+ const source=liveOrders;
+ document.getElementById('mPedidos').textContent=source.length;
+ document.getElementById('mVendas').textContent=money(source.filter(o=>o.status==='DELIVERED'&&o.payment_status!=='PENDING').reduce((a,o)=>a+Number(o.total_cents||0),0)/100);
+ document.getElementById('mProdutos').textContent=db.products.filter(p=>p.active).length;
+ document.getElementById('mAndamento').textContent=source.filter(o=>!['DELIVERED','REJECTED'].includes(o.status)).length;
+ renderLiveOrders();
+ document.getElementById('products').innerHTML=db.products.map(p=>`<div class="product row"><div><b>${escapeHtml(p.name)}</b><br><span class="muted">${escapeHtml(p.cat)} · estoque ${p.stock} · ${p.active?'Ativo':'Inativo'}</span></div><div><b>${money(p.price)}</b> <button class="btn" onclick="editProduct(${p.id})">Editar</button> <button class="btn ${p.active?'red':'green'}" onclick="toggle(${p.id})">${p.active?'Desativar':'Ativar'}</button></div></div>`).join('')||'<p class="muted">Nenhum produto cadastrado.</p>';
+ document.getElementById('stock').innerHTML=db.products.map(p=>`<div class="product row"><span>${escapeHtml(p.name)}</span><b>${p.stock} un.</b><button class="btn" onclick="changeStock(${p.id})">Alterar</button></div>`).join('')||'<p class="muted">Nenhum produto cadastrado.</p>';
+ document.getElementById('homeOrders').innerHTML=source.slice().sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,4).map(o=>`<div class="product row"><span>#${o.id} · ${L[o.status]||o.status}<br><span class="muted">${escapeHtml(o.customer_name||'Cliente não informado')} · ${fmtDate(o.created_at)}</span></span><b>${orderTotal(o)}</b></div>`).join('')||'<p class="muted">Sem pedidos.</p>';
+ document.getElementById('deliveries').innerHTML=source.filter(o=>['READY','DELIVERY_REQUESTED','DRIVER_ASSIGNED','OUT_FOR_DELIVERY'].includes(o.status)).map(o=>`<div class="product row"><span>Pedido #${o.id} · ${escapeHtml(o.customer_name||'Cliente')}<br><span class="muted">${fmtDate(o.created_at)}</span></span><b>${L[o.status]}</b></div>`).join('')||'<p class="muted">Nenhuma entrega em andamento.</p>';
 }
-function openCart(){document.getElementById('checkoutOverlay').classList.add('on');stage=1;render()}function closeCart(){document.getElementById('checkoutOverlay').classList.remove('on')}
-function add(id){let p=products.find(x=>x.id==id),i=cart.find(x=>x.id==id);if(!p)return;if(i){if(i.qty>=p.stock)return alert('Quantidade máxima disponível.');i.qty++}else cart.push({id,qty:1});saveCart()}
-function changeQty(id,d){let i=cart.find(x=>x.id==id),p=products.find(x=>x.id==id);if(!i||!p)return;i.qty+=d;if(i.qty<=0)remove(id);else if(i.qty>p.stock)i.qty=p.stock;saveCart()}
-function remove(id){cart=cart.filter(x=>x.id!=id);saveCart()}
-function setType(v){type=v;clearDeliveryQuote();deliveryFee=v==='PICKUP'?0:null;cepValid=v==='PICKUP';document.getElementById('rDelivery').classList.toggle('sel',v==='DELIVERY');document.getElementById('rPickup').classList.toggle('sel',v==='PICKUP');document.getElementById('addressBox').classList.toggle('hidden',v==='PICKUP');render()}
-function setPayment(v){payment=v;document.getElementById('pPix').classList.toggle('sel',v==='PIX');document.getElementById('pCard').classList.toggle('sel',v==='CARD')}
-async function lookupCep(){let cep=document.getElementById('cep').value.replace(/\D/g,'');clearDeliveryQuote();if(cep.length!==8){cepValid=false;render();return}try{let r=await fetch('https://viacep.com.br/ws/'+cep+'/json/'),d=await r.json();if(d.erro)throw 0;cepData=d;document.getElementById('street').value=d.logradouro||'';document.getElementById('neighborhood').value=d.bairro||'';cepValid=true;render();maybeQuote()}catch(e){cepValid=false;cepData={};render();alert('CEP não encontrado.')}}
-function maybeQuote(){if(type==='DELIVERY'&&cepValid&&document.getElementById('number').value.trim())calculateDeliveryQuote()}
-async function calculateDeliveryQuote(){
- if(type!=='DELIVERY')return;
- const cep=document.getElementById('cep').value.replace(/\D/g,'');const number=document.getElementById('number').value.trim();const street=document.getElementById('street').value.trim();
- if(cep.length!==8||!street||!number)return alert('Informe CEP, rua e número para calcular a entrega.');
- const btn=[...document.querySelectorAll('#addressBox button')].find(x=>x.textContent.includes('CALCULAR'));if(btn){btn.disabled=true;btn.textContent='CALCULANDO ENTREGA...'}
- try{
-  const r=await fetch(API+'/delivery/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:{cep,street,number,complement:document.getElementById('complement').value.trim(),neighborhood:document.getElementById('neighborhood').value.trim(),city:cepData.localidade||'',state:cepData.uf||''},orderValueCents:Math.round(calc()*100)})});
-  const d=await r.json();if(!r.ok)throw new Error(d.error||'Não foi possível calcular a entrega.');
-  deliveryFee=Number(d.deliveryFee);deliveryEstimateId=d.estimateId;deliveryQuoteExpiresAt=Date.parse(d.expiresAt);cepValid=true;render();
- }catch(e){clearDeliveryQuote();render();alert(e.message||'Não foi possível calcular a entrega.')}
- finally{if(btn){btn.disabled=false;btn.textContent='CALCULAR VALOR DA ENTREGA'}}
-}
-async function placeOrder(){
- if(!cart.length)return alert('Carrinho vazio.');if(type==='DELIVERY')return alert('A entrega ainda está aguardando a integração com o parceiro de logística. Escolha retirada na loja para testar o pagamento real.');
- const customer={name:document.getElementById('customerName').value.trim(),phone:document.getElementById('customerPhone').value.trim()};if(!customer.name||!customer.phone)return alert('Informe nome e WhatsApp.');
- const items=cart.map(i=>({productId:i.id,quantity:i.qty}));
- try{
-  const address=type==='DELIVERY'?{cep:document.getElementById('cep').value.replace(/\D/g,''),street:document.getElementById('street').value.trim(),number:document.getElementById('number').value.trim(),complement:document.getElementById('complement').value.trim(),neighborhood:document.getElementById('neighborhood').value.trim(),city:cepData.localidade||'',state:cepData.uf||''}:null;
-  const r=await fetch(API+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer,orderType:type,address,items,deliveryFeeCents:type==='DELIVERY'?Math.round(deliveryFee*100):0,deliveryEstimateId:type==='DELIVERY'?deliveryEstimateId:null})});const o=await r.json();if(!r.ok)throw new Error(o.error||'Não foi possível criar o pedido.');
-  activeOrderId=o.id;localStorage.setItem('mpai_order_id',String(o.id));
-  const p=await fetch(API+'/payments/infinitepay/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:o.id})});const pay=await p.json();if(!p.ok)throw new Error(pay.error||'Não foi possível abrir o pagamento.');
-  cart=[];localStorage.removeItem('mpai_client_cart');closeCart();alert('Pedido criado! Você será encaminhado para o pagamento seguro da InfinitePay.');window.location.href=pay.url;
- }catch(e){alert(e.message||'Erro ao iniciar pagamento.')}
-}
-async function refreshOrder(){if(!activeOrderId)return;try{let r=await fetch(API+'/orders/'+activeOrderId);if(!r.ok)return;let o=await r.json();renderOrder(o)}catch(e){}}
-function renderOrder(o){let items=Array.isArray(o.items)?o.items:[];let status=o.status||'PENDING_PAYMENT';document.getElementById('track').innerHTML=`<h3>Pedido #${o.id}</h3><div class="steps">${['RECEIVED','ACCEPTED','PREPARING','READY','OUT_FOR_DELIVERY','DELIVERED'].map(s=>`<span class="step ${status===s?'on':''}">${statusNames[s]}</span>`).join('')}</div><p><b>${statusNames[status]||status}</b></p><div class="muted">${items.map(i=>`${i.quantity}x ${escapeHtml(i.name)}`).join(' · ')}</div>${o.payment_status==='PENDING'?'<div class="notice">⏳ Aguardando confirmação do pagamento.</div>':''}${status==='OUT_FOR_DELIVERY'?`<div class="notice"><b>📦 Você recebeu seu pedido?</b><p>Confirme somente depois que chegar.</p><button class="btn green" onclick="confirmReceipt(${o.id})">SIM, RECEBI MEU PEDIDO</button></div>`:''}${status==='DELIVERED'?'<div class="notice">✅ Recebimento confirmado.</div>':''}`;if(status==='DELIVERED')renderRating(o)}
-async function confirmReceipt(id){let r=await fetch(API+'/orders/'+id+'/confirm-receipt',{method:'POST'});let d=await r.json();if(!r.ok)return alert(d.error||'Não foi possível confirmar.');refreshOrder()}
-function renderRating(o){let box=document.getElementById('ratingBox');box.classList.remove('hidden');box.innerHTML=`<div class="card" style="margin-top:12px;padding:14px;background:#faf7fc"><h3>⭐ Como foi sua experiência com a Gel & El?</h3><div id="stars" class="rating">${[1,2,3,4,5].map(n=>`<span class="${selectedStars===n?'sel':''}" onclick="rateSelect(${n})">★</span>`).join('')}</div><input id="reviewText" placeholder="Conte o que achou (opcional)"><div style="display:flex;gap:8px;margin-top:8px"><button class="btn" onclick="submitReview(${o.id})">ENVIAR AVALIAÇÃO</button><button class="btn gray" onclick="skipReview()">AGORA NÃO</button></div><small class="muted">Nota e comentário são opcionais.</small></div>`}
-function rateSelect(n){selectedStars=n;document.querySelectorAll('#stars span').forEach((x,i)=>x.classList.toggle('sel',i<n))}
-async function submitReview(id){let comment=document.getElementById('reviewText').value.trim();let r=await fetch(API+'/orders/'+id+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stars:selectedStars,comment})});let d=await r.json();if(!r.ok)return alert(d.error||'Não foi possível salvar.');document.getElementById('ratingBox').innerHTML='<div class="notice">⭐ Obrigado pela sua avaliação!</div>';loadReviews()}
-function skipReview(){document.getElementById('ratingBox').classList.add('hidden')}
-async function init(){await loadProducts();await loadReviews();await refreshOrder();render()}
-setInterval(()=>{refreshOrder();loadProducts()},5000);init();
-</script>
-</body></html>
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function orderTotal(o){return money(Number(o.total_cents||0)/100)}
+function renderLiveOrders(){const el=document.getElementById('orders');if(!el)return;const os=liveOrders.slice().sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));el.innerHTML=os.length?os.map(o=>`<div class="card ${o.status==='RECEIVED'?'alert':''}" style="margin-bottom:14px"><div class="row"><div><h2 style="margin-bottom:4px">Pedido #${o.id}</h2><b>${escapeHtml(o.customer_name||'Cliente não informado')}</b><br><span class="muted">WhatsApp: ${escapeHtml(o.customer_phone||'—')} · ${fmtDate(o.created_at)}</span></div><span class="pill">${L[o.status]||o.status}</span></div><hr style="border:0;border-top:1px solid #eee;margin:12px 0"><p>${(o.items||[]).map(i=>(i.quantity??1)+'x '+escapeHtml(i.name??i.product_name??'Produto')+' — '+money(Number(i.unitPriceCents??i.unit_price_cents??0)/100)).join('<br>')}</p><b>Total: ${orderTotal(o)}</b>${o.address?`<p><b>Entrega:</b> ${escapeHtml(o.address.formatted_address||o.address.rua||JSON.stringify(o.address))}</p>`:''}${o.reason?'<p>Motivo: '+escapeHtml(o.reason)+'</p>':''}<div style="margin-top:12px">${liveActions(o)}</div></div>`).join(''):'<div class="card"><p class="muted">Nenhum pedido recebido.</p></div>'}
+function liveActions(o){if(o.status==='RECEIVED')return `<button class="btn" onclick="apiStatus(${o.id},'ACCEPTED')">ACEITAR</button> <button class="btn red" onclick="apiReject(${o.id})">RECUSAR</button>`;if(o.status==='ACCEPTED')return `<button class="btn" onclick="apiStatus(${o.id},'PREPARING')">▶ Iniciar preparo</button>`;if(o.status==='PREPARING')return `<button class="btn" onclick="apiStatus(${o.id},'READY')">✓ Marcar pronto</button>`;if(o.status==='READY')return `<button class="btn" onclick="manualDelivery(${o.id})">🚚 Marcar entrega solicitada</button> <button class="btn green" onclick="apiStatus(${o.id},'DELIVERED')">Retirada concluída</button>`;if(o.status==='DELIVERY_REQUESTED')return `<button class="btn" onclick="apiStatus(${o.id},'DRIVER_ASSIGNED')">👤 Entregador encontrado</button>`;if(o.status==='DRIVER_ASSIGNED')return `<button class="btn" onclick="apiStatus(${o.id},'OUT_FOR_DELIVERY')">🛵 Saiu para entrega</button>`;if(o.status==='OUT_FOR_DELIVERY')return `<span class="pill">📱 Aguardando cliente confirmar recebimento</span>`;return '<span class="muted">Sem ações</span>'}
+async function loadLiveOrders(){try{const r=await fetch('/api/gestor/orders',{cache:'no-store'});const data=await r.json();if(!r.ok)throw new Error(data.error||'Erro ao carregar pedidos.');const previous=knownReceived;const currentReceived=new Set(data.filter(o=>o.status==='RECEIVED').map(o=>String(o.id)));for(const o of data.filter(o=>o.status==='RECEIVED')){if(!previous.has(String(o.id))){beep();try{if('Notification'in window&&Notification.permission==='granted')new Notification('Novo pedido Gel & El',{body:`Pedido #${o.id} · ${o.customer_name||'Cliente'} · ${orderTotal(o)}`})}catch(e){}}}knownReceived=currentReceived;liveOrders=data;document.getElementById('pollStatus').textContent=`🟢 Conectado · Atualização ${fmtDate(new Date())}`;render()}catch(e){document.getElementById('pollStatus').textContent='🟠 Não foi possível atualizar: '+e.message}}
+async function loadProducts(){try{const r=await fetch('/api/gestor/products',{cache:'no-store'});const data=await r.json();if(!r.ok)throw new Error(data.error||'Erro ao carregar produtos.');db.products=data.map(normalizeProduct);render()}catch(e){alert('Não foi possível carregar os produtos do servidor: '+e.message)}}
+async function apiStatus(id,status){const r=await fetch('/api/gestor/orders/'+id+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});if(!r.ok){const d=await r.json().catch(()=>({}));alert(d.error||'Não foi possível atualizar.');return}loadLiveOrders()}
+async function apiReject(id){const reason=prompt('Motivo da recusa:');if(!reason)return;const r=await fetch('/api/gestor/orders/'+id+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'REJECTED',reason})});if(!r.ok){const d=await r.json().catch(()=>({}));alert(d.error||'Não foi possível recusar.');return}loadLiveOrders()}
+async function manualDelivery(id){await apiStatus(id,'DELIVERY_REQUESTED')}
+function editProduct(id){const p=db.products.find(x=>x.id==id);if(!p)return;editId=id;document.getElementById('modalTitle').textContent='Editar produto';document.getElementById('pName').value=p.name;document.getElementById('pPrice').value=p.price;document.getElementById('pStock').value=p.stock;document.getElementById('pCat').value=p.cat;document.getElementById('modal').classList.add('on')}
+async function saveProduct(){const n=document.getElementById('pName').value.trim();if(!n)return;const payload={name:n,price:Number(document.getElementById('pPrice').value),stock:Number(document.getElementById('pStock').value),category:document.getElementById('pCat').value||'Geral',active:true};let r;if(editId){r=await fetch('/api/gestor/products/'+editId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})}else{r=await fetch('/api/gestor/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})}const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Não foi possível salvar o produto.');closeModal();await loadProducts()}
+async function toggle(id){const p=db.products.find(x=>x.id==id);if(!p)return;const r=await fetch('/api/gestor/products/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!p.active})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Não foi possível alterar o produto.');await loadProducts()}
+async function changeStock(id){const p=db.products.find(x=>x.id==id),v=prompt('Novo estoque:',p?.stock??0);if(v===null)return;const r=await fetch('/api/gestor/products/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({stock:Math.max(0,Number(v))})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Não foi possível alterar o estoque.');await loadProducts()}
+function closeModal(){document.getElementById('modal').classList.remove('on')}
+function renderReviews(){const el=document.getElementById('reviews');if(!el)return;const rs=(db.reviews||[]).slice().reverse();if(!rs.length){el.innerHTML='<p class="muted">Ainda não há avaliações.</p>';return}const rated=rs.filter(r=>r.stars),avg=rated.length?(rated.reduce((a,r)=>a+r.stars,0)/rated.length).toFixed(1):'—';el.innerHTML=`<div class="notice"><b>⭐ ${avg}</b> média geral · ${rs.length} avaliação${rs.length>1?'ões':''}</div>`+rs.map(r=>`<div class="card" style="margin:12px 0;background:#faf7fc"><div style="font-size:20px">${r.stars?('★'.repeat(r.stars)+'☆'.repeat(5-r.stars)):'Sem nota'}</div><p>${escapeHtml(r.comment||'')} </p><span class="muted">Pedido #${r.orderId||r.order_id||''}</span></div>`).join('')}
+async function loadWhatsapp(){const el=document.getElementById('waConversations');if(!el)return;try{const r=await fetch('/api/gestor/whatsapp/conversations');const data=await r.json();if(!r.ok)throw new Error(data.error||'Erro');if(!data.length){el.innerHTML='<p class="muted">Nenhum atendimento humano ativo no momento.</p>';return}el.innerHTML=data.map(c=>{const remaining=c.secondsRemaining==null?null:c.secondsRemaining;const timer=remaining==null?'Aguardando primeira resposta do atendente':`Bot volta em ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;return `<div class="card" style="margin:12px 0;background:#faf7fc"><div class="row"><div><b>${escapeHtml(c.phone)}</b><br><span class="muted">${timer}</span></div><button class="btn red" onclick="resumeBot('${c.phone}')">Devolver ao bot agora</button></div><textarea id="wa_${c.phone}" rows="3" placeholder="Digite a resposta do atendente..." style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;margin:10px 0"></textarea><button class="btn green" onclick="sendHumanReply('${c.phone}')">Enviar como atendente</button></div>`}).join('')}catch(e){el.innerHTML=`<p class="muted">${escapeHtml(e.message)}</p>`}}
+async function sendHumanReply(phone){const el=document.getElementById('wa_'+phone),text=el.value.trim();if(!text)return;const r=await fetch('/api/gestor/whatsapp/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,text})});const data=await r.json();if(!r.ok){alert(data.error||'Não foi possível enviar.');return}el.value='';loadWhatsapp()}
+async function resumeBot(phone){const r=await fetch('/api/gestor/whatsapp/resume-bot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});const data=await r.json();if(!r.ok){alert(data.error||'Erro.');return}loadWhatsapp()}
+if('Notification'in window&&Notification.permission==='default'){try{Notification.requestPermission()}catch(e){}}
+setInterval(()=>{loadLiveOrders();loadProducts();renderReviews();if(document.getElementById('whatsapp')?.classList.contains('on'))loadWhatsapp()},5000);
+loadProducts();loadLiveOrders();renderReviews();
+function closeModal(){document.getElementById('modal').classList.remove('on')}
+function changeStock(id){let p=db.products.find(x=>x.id==id),v=prompt('Novo estoque:',p.stock);if(v!==null){p.stock=Math.max(0,Number(v));save()}}
+function renderReviews(){let el=document.getElementById('reviews');if(!el)return;let rs=(db.reviews||[]).slice().reverse();if(!rs.length){el.innerHTML='<p class="muted">Ainda não há avaliações.</p>';return}let rated=rs.filter(r=>r.stars),avg=rated.length?(rated.reduce((a,r)=>a+r.stars,0)/rated.length).toFixed(1):'—';el.innerHTML=`<div class="notice"><b>⭐ ${avg}</b> média geral · ${rs.length} avaliação${rs.length>1?'ões':''}</div>`+rs.map(r=>`<div class="card" style="margin:12px 0;background:#faf7fc"><div style="font-size:20px">${r.stars?('★'.repeat(r.stars)+'☆'.repeat(5-r.stars)):'Sem nota'}</div><p>${r.comment||'<span class="muted">Sem comentário.</span>'}</p><span class="muted">Pedido #${r.orderId}</span></div>`).join('')}
+
+async function loadWhatsapp(){
+  const el=document.getElementById('waConversations');if(!el)return;
+  try{const r=await fetch('/api/gestor/whatsapp/conversations');const data=await r.json();if(!r.ok)throw new Error(data.error||'Erro');if(!data.length){el.innerHTML='<p class="muted">Nenhum atendimento humano ativo no momento.</p>';return;}el.innerHTML=data.map(c=>{const remaining=c.secondsRemaining==null?null:c.secondsRemaining;const timer=remaining==null?'Aguardando primeira resposta do atendente':`Bot volta em ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;return `<div class="card" style="margin:12px 0;background:#faf7fc"><div class="row"><div><b>${c.phone}</b><br><span class="muted">${timer}</span></div><button class="btn red" onclick="resumeBot('${c.phone}')">Devolver ao bot agora</button></div><textarea id="wa_${c.phone}" rows="3" placeholder="Digite a resposta do atendente..." style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;margin:10px 0"></textarea><button class="btn green" onclick="sendHumanReply('${c.phone}')">Enviar como atendente</button></div>`}).join('');}catch(e){el.innerHTML=`<p class="muted">${e.message}</p>`;}}
+async function sendHumanReply(phone){const el=document.getElementById('wa_'+phone),text=el.value.trim();if(!text)return;const r=await fetch('/api/gestor/whatsapp/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,text})});const data=await r.json();if(!r.ok){alert(data.error||'Não foi possível enviar.');return;}el.value='';loadWhatsapp()}
+async function resumeBot(phone){const r=await fetch('/api/gestor/whatsapp/resume-bot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});const data=await r.json();if(!r.ok){alert(data.error||'Erro.');return;}loadWhatsapp()}
+
+window.addEventListener('storage',()=>{db=JSON.parse(localStorage.getItem(K)||'null')||db;render();renderReviews()});
+if('Notification' in window && Notification.permission==='default'){try{Notification.requestPermission()}catch(e){}}
+setInterval(()=>{loadLiveOrders();renderReviews();if(document.getElementById('whatsapp')?.classList.contains('on'))loadWhatsapp()},5000);
+loadLiveOrders();render();renderReviews();
+</script></body></html>
