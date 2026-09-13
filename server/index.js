@@ -49,6 +49,7 @@ async function initDb() {
   const schema = await fs.readFile(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
   await pool.query(schema);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT`);
+  await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS human_last_reply_at TIMESTAMPTZ`);
   await pool.query(`CREATE TABLE IF NOT EXISTS delivery_quotes (estimate_id TEXT PRIMARY KEY, fee_cents INTEGER NOT NULL, currency_code TEXT NOT NULL DEFAULT 'BRL', expires_at TIMESTAMPTZ NOT NULL, provider TEXT NOT NULL DEFAULT 'UBER_DIRECT', address JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
   if (rows[0].count === 0) {
@@ -85,6 +86,52 @@ app.post('/api/webhooks/whatsapp', (req, res) => {
   void processWhatsAppWebhook(req.body).catch(err => console.error('WhatsApp webhook error:', err));
 });
 
+// ---------- Atendimento humano no Gestor ----------
+app.get('/api/gestor/whatsapp/conversations', async (_req, res) => {
+  try {
+    await pool.query(`UPDATE whatsapp_conversations
+      SET human_mode=FALSE, updated_at=NOW()
+      WHERE human_mode=TRUE AND human_last_reply_at IS NOT NULL
+        AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`);
+    const { rows } = await pool.query(`
+      SELECT phone, human_mode, human_requested_at, human_last_reply_at, updated_at,
+             CASE WHEN human_last_reply_at IS NOT NULL THEN GREATEST(0, 300 - EXTRACT(EPOCH FROM (NOW()-human_last_reply_at))) ELSE NULL END AS seconds_remaining
+        FROM whatsapp_conversations
+       WHERE human_mode=TRUE
+       ORDER BY COALESCE(human_last_reply_at, human_requested_at) DESC NULLS LAST`);
+    res.json(rows.map(r => ({ ...r, secondsRemaining: r.seconds_remaining == null ? null : Math.ceil(Number(r.seconds_remaining)) })));
+  } catch (e) {
+    res.status(500).json({ error: 'Não foi possível carregar os atendimentos.' });
+  }
+});
+
+app.post('/api/gestor/whatsapp/reply', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  const text = String(req.body?.text || '').trim();
+  if (!phone || !text) return res.status(400).json({ error: 'Telefone e mensagem são obrigatórios.' });
+  try {
+    await sendWhatsAppText(phone, text);
+    await pool.query(`
+      INSERT INTO whatsapp_conversations (phone, human_mode, human_requested_at, human_last_reply_at, updated_at)
+      VALUES ($1, TRUE, COALESCE((SELECT human_requested_at FROM whatsapp_conversations WHERE phone=$1), NOW()), NOW(), NOW())
+      ON CONFLICT (phone) DO UPDATE
+        SET human_mode=TRUE, human_last_reply_at=NOW(), updated_at=NOW()`,
+      [phone]
+    );
+    res.json({ ok: true, phone, humanMode: true, expiresInSeconds: 300 });
+  } catch (e) {
+    console.error('Human WhatsApp reply error:', e);
+    res.status(502).json({ error: e.message || 'Não foi possível enviar a mensagem.' });
+  }
+});
+
+app.post('/api/gestor/whatsapp/resume-bot', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório.' });
+  await pool.query(`UPDATE whatsapp_conversations SET human_mode=FALSE, human_last_reply_at=NULL, updated_at=NOW() WHERE phone=$1`, [phone]);
+  res.json({ ok: true, phone, humanMode: false });
+});
+
 async function processWhatsAppWebhook(body) {
   const changes = body?.entry?.flatMap(e => e.changes || []) || [];
   for (const change of changes) {
@@ -113,8 +160,54 @@ async function sendWhatsAppText(to, text) {
   if (!r.ok) console.error('WhatsApp send failed:', await r.text());
 }
 
+async function getWhatsAppConversation(phone) {
+  const { rows } = await pool.query(
+    `SELECT phone, human_mode, human_requested_at, human_last_reply_at, updated_at
+       FROM whatsapp_conversations WHERE phone=$1`,
+    [phone]
+  );
+  return rows[0] || null;
+}
+
+async function expireHumanMode(phone) {
+  await pool.query(
+    `UPDATE whatsapp_conversations
+        SET human_mode=FALSE, updated_at=NOW()
+      WHERE phone=$1 AND human_mode=TRUE
+        AND human_last_reply_at IS NOT NULL
+        AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`,
+    [phone]
+  );
+}
+
 async function handleIncomingWhatsApp(from, text) {
-  const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+
+  // HANDOFF HUMANO: cliente pede atendente -> silêncio total do bot.
+  // O modo humano só termina 5 minutos após a ÚLTIMA resposta enviada pelo atendente.
+  const asksHuman = /\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\b/.test(normalized)
+    && !/\b(nao|não)\s+(quero|preciso|quero falar)\b/.test(normalized);
+
+  await expireHumanMode(from);
+  const conversation = await getWhatsAppConversation(from);
+
+  if (conversation?.human_mode) {
+    // Atendimento humano ativo: nunca responder automaticamente.
+    return;
+  }
+
+  if (asksHuman) {
+    await pool.query(
+      `INSERT INTO whatsapp_conversations (phone, human_mode, human_requested_at, human_last_reply_at, updated_at)
+       VALUES ($1, TRUE, NOW(), NULL, NOW())
+       ON CONFLICT (phone) DO UPDATE
+         SET human_mode=TRUE, human_requested_at=NOW(), human_last_reply_at=NULL, updated_at=NOW()`,
+      [from]
+    );
+    await sendWhatsAppText(from, `Claro! 💜 Vou encaminhar você para um atendente da Gel & El.\n\nA partir de agora, não vou mais enviar mensagens automáticas nesta conversa. Aguarde só um pouquinho. 😊`);
+    return;
+  }
+
   if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?)$/.test(normalized)) {
     const { rows } = await pool.query(`SELECT name,price_cents FROM products WHERE active=true AND stock>0 ORDER BY category NULLS LAST, name`);
     const lines = rows.length ? rows.map(p => `• ${p.name} — R$ ${(p.price_cents/100).toFixed(2).replace('.', ',')}`) : ['No momento estamos sem produtos disponíveis.'];
@@ -346,5 +439,13 @@ app.get('/exclusao-de-dados', (_req,res)=>res.sendFile(path.join(root,'public','
 app.use('/gestor', express.static(path.join(root,'gestor')));
 app.use('/', express.static(path.join(root,'cliente')));
 app.get('/pagamento-concluido', (_req,res)=>res.sendFile(path.join(root,'cliente','index.html')));
+
+setInterval(() => {
+  pool.query(`UPDATE whatsapp_conversations
+    SET human_mode=FALSE, updated_at=NOW()
+    WHERE human_mode=TRUE AND human_last_reply_at IS NOT NULL
+      AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`)
+    .catch(err => console.error('Human mode cleanup error:', err));
+}, 15000);
 
 initDb().then(()=>app.listen(port,'0.0.0.0',()=>console.log(`Gel & El backend online na porta ${port}`))).catch(err=>{ console.error('Falha ao inicializar banco:',err); process.exit(1); });

@@ -40,6 +40,8 @@
 
 <section id="avaliacoes" class="view"><h1>⭐ Avaliações dos pedidos</h1><div class="card"><p class="muted">Veja as notas e comentários deixados pelos clientes depois de confirmarem o recebimento. A avaliação é da experiência com o pedido inteiro.</p><div id="reviews"></div></div></section>
 
+<section id="whatsapp" class="view"><div class="row"><h1>💬 Atendimento WhatsApp</h1><button class="btn gray" onclick="loadWhatsapp()">Atualizar</button></div><div class="card"><p class="muted">Quando um cliente pedir atendente, o bot para. Cada resposta enviada por aqui reinicia os 5 minutos. Depois de 5 minutos sem nova resposta humana, o bot volta a assumir.</p><div id="waConversations"></div></div></section>
+
 <section id="financeiro" class="view"><h1>Financeiro</h1><div class="grid"><div class="card"><span class="muted">Faturamento</span><div class="metric" id="finSales">R$ 0,00</div></div><div class="card"><span class="muted">Taxas</span><div class="metric">R$ 0,00</div></div><div class="card"><span class="muted">Resultado estimado</span><div class="metric" id="finNet">R$ 0,00</div></div></div></section>
 
 <section id="config" class="view"><h1>Configurações da loja</h1><div class="card"><label>Nome da loja</label><input value="Gel & El Suquinhos Gourmet"><label>Pedido mínimo</label><input value="0,00"><label>Entrega</label><select><option>Ativa</option><option>Somente retirada</option></select><button class="btn" onclick="alert('Configuração salva nesta demonstração.')">Salvar configurações</button></div></section>
@@ -83,7 +85,32 @@ function closeModal(){document.getElementById('modal').classList.remove('on')}
 function changeStock(id){let p=db.products.find(x=>x.id==id),v=prompt('Novo estoque:',p.stock);if(v!==null){p.stock=Math.max(0,Number(v));save()}}
 function renderReviews(){let el=document.getElementById('reviews');if(!el)return;let rs=(db.reviews||[]).slice().reverse();if(!rs.length){el.innerHTML='<p class="muted">Ainda não há avaliações.</p>';return}let rated=rs.filter(r=>r.stars),avg=rated.length?(rated.reduce((a,r)=>a+r.stars,0)/rated.length).toFixed(1):'—';el.innerHTML=`<div class="notice"><b>⭐ ${avg}</b> média geral · ${rs.length} avaliação${rs.length>1?'ões':''}</div>`+rs.map(r=>`<div class="card" style="margin:12px 0;background:#faf7fc"><div style="font-size:20px">${r.stars?('★'.repeat(r.stars)+'☆'.repeat(5-r.stars)):'Sem nota'}</div><p>${r.comment||'<span class="muted">Sem comentário.</span>'}</p><span class="muted">Pedido #${r.orderId}</span></div>`).join('')}
 
+async function loadWhatsapp(){
+  const el=document.getElementById('waConversations');if(!el)return;
+  try{
+    const r=await fetch('/api/gestor/whatsapp/conversations');
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'Erro');
+    if(!data.length){el.innerHTML='<p class="muted">Nenhum atendimento humano ativo no momento.</p>';return;}
+    el.innerHTML=data.map(c=>{
+      const remaining=c.secondsRemaining==null?null:c.secondsRemaining;
+      const timer=remaining==null?'Aguardando primeira resposta do atendente':`Bot volta em ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;
+      return `<div class="card" style="margin:12px 0;background:#faf7fc"><div class="row"><div><b>${c.phone}</b><br><span class="muted">${timer}</span></div><button class="btn red" onclick="resumeBot('${c.phone}')">Devolver ao bot agora</button></div><textarea id="wa_${c.phone}" rows="3" placeholder="Digite a resposta do atendente..." style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;margin:10px 0"></textarea><button class="btn green" onclick="sendHumanReply('${c.phone}')">Enviar como atendente</button></div>`;
+    }).join('');
+  }catch(e){el.innerHTML=`<p class="muted">${e.message}</p>`;}
+}
+async function sendHumanReply(phone){
+  const el=document.getElementById('wa_'+phone),text=el.value.trim();if(!text)return;
+  const r=await fetch('/api/gestor/whatsapp/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,text})});
+  const data=await r.json();if(!r.ok){alert(data.error||'Não foi possível enviar.');return;}
+  el.value='';loadWhatsapp();
+}
+async function resumeBot(phone){
+  const r=await fetch('/api/gestor/whatsapp/resume-bot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+  const data=await r.json();if(!r.ok){alert(data.error||'Erro.');return;}loadWhatsapp();
+}
+
 window.addEventListener('storage',()=>{db=JSON.parse(localStorage.getItem(K));render();renderReviews()});
-setInterval(()=>{render();renderReviews()},1000);
+setInterval(()=>{render();renderReviews();if(document.getElementById('whatsapp')?.classList.contains('on'))loadWhatsapp()},5000);
 render();renderReviews();
 </script></body></html>
