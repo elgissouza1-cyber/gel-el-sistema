@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -28,6 +29,7 @@ const uberAuthUrl = 'https://auth.uber.com/oauth/v2/token';
 const uberApiBase = 'https://api.uber.com';
 
 let uberTokenCache = { token: null, expiresAt: 0 };
+let uberStoreIdCache = ''; 
 async function getUberAccessToken() {
   const clientId = process.env.UBER_DIRECT_CLIENT_ID;
   const clientSecret = process.env.UBER_DIRECT_CLIENT_SECRET;
@@ -44,10 +46,26 @@ function deliveryAddressText(a){
   return [a?.street && `${a.street}, ${a.number||'s/n'}`, a?.complement, a?.neighborhood, a?.city, a?.state, a?.cep].filter(Boolean).join(', ');
 }
 
+const lalamoveApiBase = 'https://rest.lalamove.com';
+function lalamoveHeaders(method, pathName, body='') {
+  const key=process.env.LALAMOVE_API_KEY, secret=process.env.LALAMOVE_API_SECRET;
+  if(!key||!secret) throw new Error('Lalamove não está configurada no servidor.');
+  const timestamp=Date.now().toString();
+  const raw=`${timestamp}\r\n${method}\r\n${pathName}\r\n\r\n${body}`;
+  const signature=crypto.createHmac('sha256',secret).update(raw).digest('hex');
+  return {Authorization:`hmac ${key}:${timestamp}:${signature}`,'Content-Type':'application/json',Market:process.env.LALAMOVE_MARKET||'BR','Request-ID':crypto.randomUUID()};
+}
+function normalizePhone(phone){const d=String(phone||'').replace(/\D/g,''); if(!d)return ''; return d.startsWith('55')?`+${d}`:`+55${d}`;}
+function lalamovePickup(){return {coordinates:{lat:String(process.env.LALAMOVE_PICKUP_LAT||'-2.6011038'),lng:String(process.env.LALAMOVE_PICKUP_LNG||'-44.2012556')},address:process.env.LALAMOVE_PICKUP_ADDRESS||'Rua Nossa Senhora da Conceição, 04, Quadra 16, Vila Pavão Filho, São Luís - MA, 65058-641'};}
+async function lalamoveRequest(method,pathName,payload){const body=method==='GET'?'':JSON.stringify(payload);const r=await fetch(`${lalamoveApiBase}${pathName}`,{method,headers:lalamoveHeaders(method,pathName,body),body:method==='GET'?undefined:body});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(`Lalamove ${pathName} falhou (${r.status}): ${data?.message||JSON.stringify(data)}`);return data;}
+async function getLalamoveQuotation(address){const body={data:{serviceType:process.env.LALAMOVE_SERVICE_TYPE||'LALAGO',language:process.env.LALAMOVE_LANGUAGE||'pt_BR',stops:[lalamovePickup(),{address:deliveryAddressText(address),...(address?.lat&&address?.lng?{coordinates:{lat:String(address.lat),lng:String(address.lng)}}:{})}],item:{quantity:'1',weight:'LESS_THAN_3_KG',categories:['FOOD_DELIVERY'],handlingInstructions:['KEEP_UPRIGHT']}}};return lalamoveRequest('POST','/v3/quotations',body);}
+async function createLalamoveOrder(order,quotation){const s=quotation?.data?.stops||[];if(s.length<2)throw new Error('Cotação Lalamove sem pontos válidos.');const senderPhone=normalizePhone(process.env.LALAMOVE_SENDER_PHONE);if(!senderPhone)throw new Error('LALAMOVE_SENDER_PHONE não configurado.');const body={data:{quotationId:quotation.data.quotationId,sender:{stopId:s[0].stopId,name:process.env.LALAMOVE_SENDER_NAME||'Gel & El Suquinhos Gourmet',phone:senderPhone},recipients:[{stopId:s[1].stopId,name:order.customer_name,phone:normalizePhone(order.customer_phone),remarks:order.address?.reference||order.address?.complement||undefined}],isPODEnabled:true,metadata:{restaurantOrderId:String(order.id),restaurantName:'Gel & El Suquinhos Gourmet'}}};return lalamoveRequest('POST','/v3/orders',body);}
+
 async function initDb() {
   const schema = await fs.readFile(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
   await pool.query(schema);
-  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT, ADD COLUMN IF NOT EXISTS lalamove_order_id TEXT, ADD COLUMN IF NOT EXISTS lalamove_tracking_url TEXT`);
+  await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS human_last_reply_at TIMESTAMPTZ`);
   await pool.query(`CREATE TABLE IF NOT EXISTS delivery_quotes (estimate_id TEXT PRIMARY KEY, fee_cents INTEGER NOT NULL, currency_code TEXT NOT NULL DEFAULT 'BRL', expires_at TIMESTAMPTZ NOT NULL, provider TEXT NOT NULL DEFAULT 'UBER_DIRECT', address JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
   if (rows[0].count === 0) {
@@ -84,6 +102,52 @@ app.post('/api/webhooks/whatsapp', (req, res) => {
   void processWhatsAppWebhook(req.body).catch(err => console.error('WhatsApp webhook error:', err));
 });
 
+// ---------- Atendimento humano no Gestor ----------
+app.get('/api/gestor/whatsapp/conversations', async (_req, res) => {
+  try {
+    await pool.query(`UPDATE whatsapp_conversations
+      SET human_mode=FALSE, updated_at=NOW()
+      WHERE human_mode=TRUE AND human_last_reply_at IS NOT NULL
+        AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`);
+    const { rows } = await pool.query(`
+      SELECT phone, human_mode, human_requested_at, human_last_reply_at, updated_at,
+             CASE WHEN human_last_reply_at IS NOT NULL THEN GREATEST(0, 300 - EXTRACT(EPOCH FROM (NOW()-human_last_reply_at))) ELSE NULL END AS seconds_remaining
+        FROM whatsapp_conversations
+       WHERE human_mode=TRUE
+       ORDER BY COALESCE(human_last_reply_at, human_requested_at) DESC NULLS LAST`);
+    res.json(rows.map(r => ({ ...r, secondsRemaining: r.seconds_remaining == null ? null : Math.ceil(Number(r.seconds_remaining)) })));
+  } catch (e) {
+    res.status(500).json({ error: 'Não foi possível carregar os atendimentos.' });
+  }
+});
+
+app.post('/api/gestor/whatsapp/reply', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  const text = String(req.body?.text || '').trim();
+  if (!phone || !text) return res.status(400).json({ error: 'Telefone e mensagem são obrigatórios.' });
+  try {
+    await sendWhatsAppText(phone, text);
+    await pool.query(`
+      INSERT INTO whatsapp_conversations (phone, human_mode, human_requested_at, human_last_reply_at, updated_at)
+      VALUES ($1, TRUE, COALESCE((SELECT human_requested_at FROM whatsapp_conversations WHERE phone=$1), NOW()), NOW(), NOW())
+      ON CONFLICT (phone) DO UPDATE
+        SET human_mode=TRUE, human_last_reply_at=NOW(), updated_at=NOW()`,
+      [phone]
+    );
+    res.json({ ok: true, phone, humanMode: true, expiresInSeconds: 300 });
+  } catch (e) {
+    console.error('Human WhatsApp reply error:', e);
+    res.status(502).json({ error: e.message || 'Não foi possível enviar a mensagem.' });
+  }
+});
+
+app.post('/api/gestor/whatsapp/resume-bot', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório.' });
+  await pool.query(`UPDATE whatsapp_conversations SET human_mode=FALSE, human_last_reply_at=NULL, updated_at=NOW() WHERE phone=$1`, [phone]);
+  res.json({ ok: true, phone, humanMode: false });
+});
+
 async function processWhatsAppWebhook(body) {
   const changes = body?.entry?.flatMap(e => e.changes || []) || [];
   for (const change of changes) {
@@ -112,8 +176,54 @@ async function sendWhatsAppText(to, text) {
   if (!r.ok) console.error('WhatsApp send failed:', await r.text());
 }
 
+async function getWhatsAppConversation(phone) {
+  const { rows } = await pool.query(
+    `SELECT phone, human_mode, human_requested_at, human_last_reply_at, updated_at
+       FROM whatsapp_conversations WHERE phone=$1`,
+    [phone]
+  );
+  return rows[0] || null;
+}
+
+async function expireHumanMode(phone) {
+  await pool.query(
+    `UPDATE whatsapp_conversations
+        SET human_mode=FALSE, updated_at=NOW()
+      WHERE phone=$1 AND human_mode=TRUE
+        AND human_last_reply_at IS NOT NULL
+        AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`,
+    [phone]
+  );
+}
+
 async function handleIncomingWhatsApp(from, text) {
-  const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+
+  // HANDOFF HUMANO: cliente pede atendente -> silêncio total do bot.
+  // O modo humano só termina 5 minutos após a ÚLTIMA resposta enviada pelo atendente.
+  const asksHuman = /\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\b/.test(normalized)
+    && !/\b(nao|não)\s+(quero|preciso|quero falar)\b/.test(normalized);
+
+  await expireHumanMode(from);
+  const conversation = await getWhatsAppConversation(from);
+
+  if (conversation?.human_mode) {
+    // Atendimento humano ativo: nunca responder automaticamente.
+    return;
+  }
+
+  if (asksHuman) {
+    await pool.query(
+      `INSERT INTO whatsapp_conversations (phone, human_mode, human_requested_at, human_last_reply_at, updated_at)
+       VALUES ($1, TRUE, NOW(), NULL, NOW())
+       ON CONFLICT (phone) DO UPDATE
+         SET human_mode=TRUE, human_requested_at=NOW(), human_last_reply_at=NULL, updated_at=NOW()`,
+      [from]
+    );
+    await sendWhatsAppText(from, `Claro! 💜 Vou encaminhar você para um atendente da Gel & El.\n\nA partir de agora, não vou mais enviar mensagens automáticas nesta conversa. Aguarde só um pouquinho. 😊`);
+    return;
+  }
+
   if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?)$/.test(normalized)) {
     const { rows } = await pool.query(`SELECT name,price_cents FROM products WHERE active=true AND stock>0 ORDER BY category NULLS LAST, name`);
     const lines = rows.length ? rows.map(p => `• ${p.name} — R$ ${(p.price_cents/100).toFixed(2).replace('.', ',')}`) : ['No momento estamos sem produtos disponíveis.'];
@@ -156,10 +266,45 @@ app.post('/api/delivery/estimate', async (req,res)=>{
       await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,'BRL',$3,'MOCK',$4)`,[estimateId,feeCents,expiresAt,address]);
       return res.json({provider:'MOCK',estimateId,feeCents,deliveryFee:feeCents/100,currency:'BRL',expiresAt:expiresAt.toISOString()});
     }
-    const storeId = process.env.UBER_DIRECT_STORE_ID;
-    if (!storeId) return res.status(503).json({error:'Uber Direct ainda não está configurado: falta UBER_DIRECT_STORE_ID.'});
+    if (mode === 'lalamove') {
+      const quotation = await getLalamoveQuotation(address);
+      const d=quotation?.data; if(!d?.quotationId) throw new Error('Lalamove não retornou uma cotação válida.');
+      const feeCents=Math.round(Number(d?.priceBreakdown?.total||0)*100);
+      const expiresAt=d.expiresAt?new Date(d.expiresAt):new Date(Date.now()+5*60*1000);
+      await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,$3,$4,'LALAMOVE',$5) ON CONFLICT(estimate_id) DO UPDATE SET fee_cents=EXCLUDED.fee_cents,currency_code=EXCLUDED.currency_code,expires_at=EXCLUDED.expires_at,provider='LALAMOVE',address=EXCLUDED.address`,[d.quotationId,feeCents,d?.priceBreakdown?.currency||'BRL',expiresAt,address]);
+      return res.json({provider:'LALAMOVE',estimateId:d.quotationId,feeCents,deliveryFee:feeCents/100,currency:d?.priceBreakdown?.currency||'BRL',expiresAt:expiresAt.toISOString(),etd:null});
+    }
     const token = await getUberAccessToken();
     const formatted = deliveryAddressText(address);
+    let storeId = process.env.UBER_DIRECT_STORE_ID || '';
+
+    // Se o Store ID não estiver configurado manualmente, descubra automaticamente
+    // pela API oficial do Uber Direct usando o endereço/CEP do cliente.
+    if (!storeId) {
+      const cepDigits = String(address.cep || '').replace(/\D/g, '');
+      let lat = Number(address.latitude);
+      let lon = Number(address.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        // Centro aproximado do CEP da loja para manter a descoberta geográfica
+        // vinculada à localização cadastrada no Uber Direct.
+        lat = -2.55925;
+        lon = -44.20864;
+      }
+      const qs = new URLSearchParams({ latitude:String(lat), longitude:String(lon), pickup_at:'0' });
+      const sr = await fetch(`${uberApiBase}/v1/eats/deliveries/stores?${qs}`, {
+        headers:{ Authorization:`Bearer ${token}` }
+      });
+      const sd = await sr.json().catch(()=>({}));
+      if (!sr.ok) {
+        const detail = sd?.message || sd?.code || `HTTP ${sr.status}`;
+        return res.status(502).json({error:`Uber Direct não conseguiu localizar a loja (${detail}).`,providerStatus:sr.status,providerCode:sd?.code||null});
+      }
+      storeId = sd?.stores?.[0]?.store_id || '';
+      uberStoreIdCache = storeId;
+      if (!storeId) return res.status(502).json({error:'Uber Direct não retornou uma loja disponível para este endereço.'});
+      console.log('Uber Direct Store ID descoberto automaticamente:', storeId, 'CEP:', cepDigits);
+    }
+
     const payload = { pickup:{store_id:storeId}, dropoff_address:{formatted_address:formatted}, pickup_times:[0] };
     if (Number(orderValueCents)>0) payload.order_summary={currency_code:'BRL',order_value:Math.round(Number(orderValueCents))};
     const r = await fetch(`${uberApiBase}/v1/eats/deliveries/estimates`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -259,6 +404,15 @@ app.post('/api/orders/:id/request-delivery', async (req,res)=>{
   const mode=String(process.env.DELIVERY_QUOTE_MODE||'uber').toLowerCase();
   if(mode==='mock')return res.json({ok:true,provider:'MOCK',status:'DRIVER_ASSIGNED',trackingUrl:null});
   try{
+    if (mode === 'lalamove') {
+      const q=await pool.query(`SELECT expires_at FROM delivery_quotes WHERE estimate_id=$1 AND provider='LALAMOVE'`,[o.delivery_estimate_id]);
+      if(!q.rowCount) return res.status(409).json({error:'Cotação Lalamove não encontrada.'});
+      if(new Date(q.rows[0].expires_at).getTime()<=Date.now()) return res.status(409).json({error:'A cotação Lalamove expirou. Calcule novamente a entrega.'});
+      const quotation=await lalamoveRequest('GET',`/v3/quotations/${encodeURIComponent(o.delivery_estimate_id)}`);
+      const created=await createLalamoveOrder(o,quotation); const d=created?.data||{};
+      await pool.query(`UPDATE orders SET status='DELIVERY_REQUESTED',lalamove_order_id=$1,lalamove_tracking_url=$2 WHERE id=$3`,[String(d.orderId||''),d.shareLink||null,o.id]);
+      return res.json({ok:true,provider:'LALAMOVE',status:d.status||'ON_GOING',orderId:d.orderId,trackingUrl:d.shareLink||null});
+    }
     const token=await getUberAccessToken();
     const a=o.address||{};
     const orderItems=o.items.map(i=>({name:i.name,description:i.name,external_id:String(i.productId),quantity:i.quantity,price:Number(i.unitPriceCents),currency_code:'BRL'}));
@@ -269,6 +423,8 @@ app.post('/api/orders/:id/request-delivery', async (req,res)=>{
     res.json({ok:true,provider:'UBER_DIRECT',status:'DELIVERY_REQUESTED',orderId:data.order_id,trackingUrl:data.order_tracking_url||null});
   }catch(e){console.error('Request delivery error:',e);res.status(502).json({error:e.message||'Não foi possível solicitar o entregador.'});}
 });
+
+app.post('/api/webhooks/lalamove', async (req,res)=>{try{const d=req.body?.data||req.body||{};const oid=String(d.orderId||d.order_id||'');const st=String(d.status||'').toUpperCase();const map={ON_GOING:'DRIVER_ASSIGNED',PICKED_UP:'OUT_FOR_DELIVERY',DELIVERED:'DELIVERED',SIGNED:'DELIVERED',FAILED:'REJECTED',CANCELED:'REJECTED'};if(oid&&map[st])await pool.query(`UPDATE orders SET status=$1 WHERE lalamove_order_id=$2`,[map[st],oid]);res.sendStatus(200);}catch(e){console.error('Lalamove webhook error:',e);res.sendStatus(500);}});
 
 app.post('/api/orders/:id/confirm-receipt', async (req,res)=>{ const r=await pool.query(`UPDATE orders SET status='DELIVERED',customer_confirmed_at=NOW(),delivered_at=NOW() WHERE id=$1 AND status='OUT_FOR_DELIVERY' AND payment_status='PAID' RETURNING id,status,customer_confirmed_at`,[req.params.id]); if(!r.rowCount)return res.status(409).json({error:'Pedido não está aguardando confirmação.'}); res.json(r.rows[0]); });
 app.post('/api/orders/:id/review', async (req,res)=>{ const {stars=null,comment=''}=req.body||{}; if(stars!==null&&(!Number.isInteger(stars)||stars<1||stars>5))return res.status(400).json({error:'Nota inválida.'}); const order=await pool.query(`SELECT id,status,customer_confirmed_at FROM orders WHERE id=$1`,[req.params.id]); if(!order.rowCount||order.rows[0].status!=='DELIVERED'||!order.rows[0].customer_confirmed_at)return res.status(403).json({error:'Só é possível avaliar após confirmar o recebimento.'}); try{const r=await pool.query(`INSERT INTO reviews(order_id,stars,comment) VALUES($1,$2,$3) RETURNING *`,[req.params.id,stars,comment?.trim()||'']);res.status(201).json(r.rows[0]);}catch(e){if(e.code==='23505')return res.status(409).json({error:'Este pedido já foi avaliado.'});res.status(500).json({error:'Não foi possível salvar a avaliação.'});} });
@@ -318,5 +474,13 @@ app.get('/exclusao-de-dados', (_req,res)=>res.sendFile(path.join(root,'public','
 app.use('/gestor', express.static(path.join(root,'gestor')));
 app.use('/', express.static(path.join(root,'cliente')));
 app.get('/pagamento-concluido', (_req,res)=>res.sendFile(path.join(root,'cliente','index.html')));
+
+setInterval(() => {
+  pool.query(`UPDATE whatsapp_conversations
+    SET human_mode=FALSE, updated_at=NOW()
+    WHERE human_mode=TRUE AND human_last_reply_at IS NOT NULL
+      AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`)
+    .catch(err => console.error('Human mode cleanup error:', err));
+}, 15000);
 
 initDb().then(()=>app.listen(port,'0.0.0.0',()=>console.log(`Gel & El backend online na porta ${port}`))).catch(err=>{ console.error('Falha ao inicializar banco:',err); process.exit(1); });

@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS reviews (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS whatsapp_conversations (
+  phone TEXT PRIMARY KEY,
+  human_mode BOOLEAN NOT NULL DEFAULT FALSE,
+  human_requested_at TIMESTAMPTZ,
+  human_last_reply_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
