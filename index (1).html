@@ -27,7 +27,7 @@
 <div class="card"><span class="muted">Pedidos em andamento</span><div class="metric" id="mAndamento">0</div></div>
 </div><br><div class="card"><h2>Últimos pedidos</h2><div id="homeOrders"></div></div></section>
 
-<section id="pedidos" class="view"><h1>Gestor de pedidos</h1><div id="orders"></div></section>
+<section id="pedidos" class="view"><div class="row"><h1>Gestor de pedidos</h1><div style="display:flex;gap:8px;align-items:center"><button class="btn" id="soundBtn" onclick="toggleSound()">🔔 Som: ativado</button><button class="btn gray" onclick="loadLiveOrders()">Atualizar</button></div></div><div class="card" style="margin-bottom:14px"><b id="pollStatus">Conectando aos pedidos...</b><div class="muted">Novo pedido: alerta sonoro + identificação do cliente.</div></div><div id="orders"></div></section>
 
 <section id="produtos" class="view"><div class="row"><h1>Produtos</h1><button class="btn" onclick="newProduct()">+ Novo produto</button></div><div class="card"><div id="products"></div></div></section>
 
@@ -62,7 +62,11 @@ function save(){localStorage.setItem(K,JSON.stringify(db));render()}
 function money(v){return 'R$ '+Number(v).toFixed(2).replace('.',',')}
 function page(id,b){document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('aside button').forEach(x=>x.classList.remove('on'));b.classList.add('on');render()}
 const L={RECEIVED:'🔔 Novo pedido',ACCEPTED:'Aceito',PREPARING:'Preparando',READY:'Pronto',DELIVERY_REQUESTED:'Entrega solicitada',DRIVER_ASSIGNED:'Entregador encontrado',OUT_FOR_DELIVERY:'Saiu para entrega',DELIVERED:'Finalizado',REJECTED:'Recusado'};
-function beep(){try{let c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.frequency.value=880;g.gain.value=.07;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.45)}catch(e){}}
+let soundEnabled=true; let audioCtx=null;
+function enableAudio(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume();}catch(e){}}
+window.addEventListener('pointerdown',enableAudio,{once:false});
+function beep(){if(!soundEnabled)return; try{enableAudio();if(!audioCtx)return;const now=audioCtx.currentTime;[0,0.18,0.36].forEach((off,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=i===1?1046:880;g.gain.setValueAtTime(.0001,now+off);g.gain.exponentialRampToValueAtTime(.08,now+off+.03);g.gain.exponentialRampToValueAtTime(.0001,now+off+.15);o.connect(g);g.connect(audioCtx.destination);o.start(now+off);o.stop(now+off+.16);});}catch(e){console.warn('Som indisponível',e)}}
+function toggleSound(){soundEnabled=!soundEnabled;const b=document.getElementById('soundBtn');if(b)b.textContent=soundEnabled?'🔔 Som: ativado':'🔕 Som: desativado';if(soundEnabled)beep();}
 function render(){
 document.getElementById('mPedidos').textContent=db.orders.length;document.getElementById('mVendas').textContent=money(db.orders.filter(o=>o.status==='DELIVERED').reduce((a,o)=>a+o.total,0));document.getElementById('mProdutos').textContent=db.products.filter(p=>p.active).length;document.getElementById('mAndamento').textContent=db.orders.filter(o=>!['DELIVERED','REJECTED'].includes(o.status)).length;
 document.getElementById('products').innerHTML=db.products.map(p=>`<div class="product row"><div><b>${p.name}</b><br><span class="muted">${p.cat} · estoque ${p.stock} · ${p.active?'Ativo':'Inativo'}</span></div><div><b>${money(p.price)}</b> <button class="btn" onclick="editProduct(${p.id})">Editar</button> <button class="btn ${p.active?'red':'green'}" onclick="toggle(${p.id})">${p.active?'Desativar':'Ativar'}</button></div></div>`).join('');
@@ -137,8 +141,9 @@ async function syncServerData(){
 }
 
 window.addEventListener('storage',()=>{db=JSON.parse(localStorage.getItem(K));render();renderReviews()});
+async function loadLiveOrders(){await syncServerData();render();}
 let lastServerOrderId=0;
-async function pollServer(){const before=lastServerOrderId;await syncServerData();const incoming=(db.orders||[]).filter(o=>o.status==='RECEIVED').map(o=>Number(o.id)).filter(Number.isFinite);const max=incoming.length?Math.max(...incoming):lastServerOrderId;if(before&&max>before)beep();if(max)lastServerOrderId=Math.max(lastServerOrderId,max);if(document.getElementById('whatsapp')?.classList.contains('on'))loadWhatsapp()}
+async function pollServer(){const before=lastServerOrderId;await syncServerData();const st=document.getElementById('pollStatus');if(st)st.textContent='🟢 Conectado · '+new Date().toLocaleTimeString('pt-BR');const incoming=(db.orders||[]).filter(o=>o.status==='RECEIVED').map(o=>Number(o.id)).filter(Number.isFinite);const max=incoming.length?Math.max(...incoming):lastServerOrderId;if(before&&max>before)beep();if(max)lastServerOrderId=Math.max(lastServerOrderId,max);if(document.getElementById('whatsapp')?.classList.contains('on'))loadWhatsapp()}
 setInterval(()=>{render();renderReviews();pollServer()},5000);
-render();renderReviews();syncServerData();
+render();renderReviews();syncServerData().then(()=>{const ids=(db.orders||[]).filter(o=>Number.isFinite(Number(o.id))).map(o=>Number(o.id));if(ids.length)lastServerOrderId=Math.max(...ids)});
 </script></body></html>
