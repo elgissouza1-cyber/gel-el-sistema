@@ -110,12 +110,14 @@ app.get('/api/gestor/whatsapp/conversations', async (_req, res) => {
       WHERE human_mode=TRUE AND human_last_reply_at IS NOT NULL
         AND human_last_reply_at <= NOW() - INTERVAL '5 minutes'`);
     const { rows } = await pool.query(`
-      SELECT phone, human_mode, human_requested_at, human_last_reply_at, updated_at,
-             CASE WHEN human_last_reply_at IS NOT NULL THEN GREATEST(0, 300 - EXTRACT(EPOCH FROM (NOW()-human_last_reply_at))) ELSE NULL END AS seconds_remaining
-        FROM whatsapp_conversations
-       WHERE human_mode=TRUE
-       ORDER BY COALESCE(human_last_reply_at, human_requested_at) DESC NULLS LAST`);
-    res.json(rows.map(r => ({ ...r, secondsRemaining: r.seconds_remaining == null ? null : Math.ceil(Number(r.seconds_remaining)) })));
+      SELECT w.phone, w.human_mode, w.human_requested_at, w.human_last_reply_at, w.updated_at,
+             c.name AS customer_name,
+             CASE WHEN w.human_last_reply_at IS NOT NULL THEN GREATEST(0, 300 - EXTRACT(EPOCH FROM (NOW()-w.human_last_reply_at))) ELSE NULL END AS seconds_remaining
+        FROM whatsapp_conversations w
+        LEFT JOIN customers c ON regexp_replace(COALESCE(c.phone,''), '\D', '', 'g') = w.phone
+       WHERE w.human_mode=TRUE
+       ORDER BY COALESCE(w.human_last_reply_at, w.human_requested_at) DESC NULLS LAST`);
+    res.json(rows.map(r => ({ ...r, name: r.customer_name || 'Cliente', secondsRemaining: r.seconds_remaining == null ? null : Math.ceil(Number(r.seconds_remaining)) })));
   } catch (e) {
     res.status(500).json({ error: 'Não foi possível carregar os atendimentos.' });
   }
@@ -139,6 +141,19 @@ app.post('/api/gestor/whatsapp/reply', async (req, res) => {
     console.error('Human WhatsApp reply error:', e);
     res.status(502).json({ error: e.message || 'Não foi possível enviar a mensagem.' });
   }
+});
+
+app.post('/api/gestor/whatsapp/pause-bot', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório.' });
+  await pool.query(`
+    INSERT INTO whatsapp_conversations (phone, human_mode, human_requested_at, human_last_reply_at, updated_at)
+    VALUES ($1, TRUE, NOW(), NULL, NOW())
+    ON CONFLICT (phone) DO UPDATE
+      SET human_mode=TRUE, human_requested_at=NOW(), human_last_reply_at=NULL, updated_at=NOW()`,
+    [phone]
+  );
+  res.json({ ok: true, phone, humanMode: true, waitingHumanReply: true });
 });
 
 app.post('/api/gestor/whatsapp/resume-bot', async (req, res) => {
