@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -45,10 +46,25 @@ function deliveryAddressText(a){
   return [a?.street && `${a.street}, ${a.number||'s/n'}`, a?.complement, a?.neighborhood, a?.city, a?.state, a?.cep].filter(Boolean).join(', ');
 }
 
+const lalamoveApiBase = 'https://rest.lalamove.com';
+function lalamoveHeaders(method, pathName, body='') {
+  const key=process.env.LALAMOVE_API_KEY, secret=process.env.LALAMOVE_API_SECRET;
+  if(!key||!secret) throw new Error('Lalamove não está configurada no servidor.');
+  const timestamp=Date.now().toString();
+  const raw=`${timestamp}\r\n${method}\r\n${pathName}\r\n\r\n${body}`;
+  const signature=crypto.createHmac('sha256',secret).update(raw).digest('hex');
+  return {Authorization:`hmac ${key}:${timestamp}:${signature}`,'Content-Type':'application/json',Market:process.env.LALAMOVE_MARKET||'BR','Request-ID':crypto.randomUUID()};
+}
+function normalizePhone(phone){const d=String(phone||'').replace(/\D/g,''); if(!d)return ''; return d.startsWith('55')?`+${d}`:`+55${d}`;}
+function lalamovePickup(){return {coordinates:{lat:String(process.env.LALAMOVE_PICKUP_LAT||'-2.55925'),lng:String(process.env.LALAMOVE_PICKUP_LNG||'-44.20864')},address:process.env.LALAMOVE_PICKUP_ADDRESS||'Rua Nossa Senhora da Conceição, 04, Vila Pavão Filho, São Luís - MA, 65058-641'};}
+async function lalamoveRequest(method,pathName,payload){const body=method==='GET'?'':JSON.stringify(payload);const r=await fetch(`${lalamoveApiBase}${pathName}`,{method,headers:lalamoveHeaders(method,pathName,body),body:method==='GET'?undefined:body});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(`Lalamove ${pathName} falhou (${r.status}): ${data?.message||JSON.stringify(data)}`);return data;}
+async function getLalamoveQuotation(address){const body={data:{serviceType:process.env.LALAMOVE_SERVICE_TYPE||'MOTORCYCLE',language:process.env.LALAMOVE_LANGUAGE||'pt_BR',stops:[lalamovePickup(),{address:deliveryAddressText(address),...(address?.lat&&address?.lng?{coordinates:{lat:String(address.lat),lng:String(address.lng)}}:{})}],item:{quantity:'1',weight:'LESS_THAN_3_KG',categories:['FOOD_DELIVERY'],handlingInstructions:['KEEP_UPRIGHT']}}};return lalamoveRequest('POST','/v3/quotations',body);}
+async function createLalamoveOrder(order,quotation){const s=quotation?.data?.stops||[];if(s.length<2)throw new Error('Cotação Lalamove sem pontos válidos.');const senderPhone=normalizePhone(process.env.LALAMOVE_SENDER_PHONE);if(!senderPhone)throw new Error('LALAMOVE_SENDER_PHONE não configurado.');const body={data:{quotationId:quotation.data.quotationId,sender:{stopId:s[0].stopId,name:process.env.LALAMOVE_SENDER_NAME||'Gel & El Suquinhos Gourmet',phone:senderPhone},recipients:[{stopId:s[1].stopId,name:order.customer_name,phone:normalizePhone(order.customer_phone),remarks:order.address?.reference||order.address?.complement||undefined}],isPODEnabled:true,metadata:{restaurantOrderId:String(order.id),restaurantName:'Gel & El Suquinhos Gourmet'}}};return lalamoveRequest('POST','/v3/orders',body);}
+
 async function initDb() {
   const schema = await fs.readFile(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
   await pool.query(schema);
-  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT, ADD COLUMN IF NOT EXISTS lalamove_order_id TEXT, ADD COLUMN IF NOT EXISTS lalamove_tracking_url TEXT`);
   await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS human_last_reply_at TIMESTAMPTZ`);
   await pool.query(`CREATE TABLE IF NOT EXISTS delivery_quotes (estimate_id TEXT PRIMARY KEY, fee_cents INTEGER NOT NULL, currency_code TEXT NOT NULL DEFAULT 'BRL', expires_at TIMESTAMPTZ NOT NULL, provider TEXT NOT NULL DEFAULT 'UBER_DIRECT', address JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
@@ -250,6 +266,14 @@ app.post('/api/delivery/estimate', async (req,res)=>{
       await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,'BRL',$3,'MOCK',$4)`,[estimateId,feeCents,expiresAt,address]);
       return res.json({provider:'MOCK',estimateId,feeCents,deliveryFee:feeCents/100,currency:'BRL',expiresAt:expiresAt.toISOString()});
     }
+    if (mode === 'lalamove') {
+      const quotation = await getLalamoveQuotation(address);
+      const d=quotation?.data; if(!d?.quotationId) throw new Error('Lalamove não retornou uma cotação válida.');
+      const feeCents=Math.round(Number(d?.priceBreakdown?.total||0)*100);
+      const expiresAt=d.expiresAt?new Date(d.expiresAt):new Date(Date.now()+5*60*1000);
+      await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,$3,$4,'LALAMOVE',$5) ON CONFLICT(estimate_id) DO UPDATE SET fee_cents=EXCLUDED.fee_cents,currency_code=EXCLUDED.currency_code,expires_at=EXCLUDED.expires_at,provider='LALAMOVE',address=EXCLUDED.address`,[d.quotationId,feeCents,d?.priceBreakdown?.currency||'BRL',expiresAt,address]);
+      return res.json({provider:'LALAMOVE',estimateId:d.quotationId,feeCents,deliveryFee:feeCents/100,currency:d?.priceBreakdown?.currency||'BRL',expiresAt:expiresAt.toISOString(),etd:null});
+    }
     const token = await getUberAccessToken();
     const formatted = deliveryAddressText(address);
     let storeId = process.env.UBER_DIRECT_STORE_ID || '';
@@ -380,6 +404,15 @@ app.post('/api/orders/:id/request-delivery', async (req,res)=>{
   const mode=String(process.env.DELIVERY_QUOTE_MODE||'uber').toLowerCase();
   if(mode==='mock')return res.json({ok:true,provider:'MOCK',status:'DRIVER_ASSIGNED',trackingUrl:null});
   try{
+    if (mode === 'lalamove') {
+      const q=await pool.query(`SELECT expires_at FROM delivery_quotes WHERE estimate_id=$1 AND provider='LALAMOVE'`,[o.delivery_estimate_id]);
+      if(!q.rowCount) return res.status(409).json({error:'Cotação Lalamove não encontrada.'});
+      if(new Date(q.rows[0].expires_at).getTime()<=Date.now()) return res.status(409).json({error:'A cotação Lalamove expirou. Calcule novamente a entrega.'});
+      const quotation=await lalamoveRequest('GET',`/v3/quotations/${encodeURIComponent(o.delivery_estimate_id)}`);
+      const created=await createLalamoveOrder(o,quotation); const d=created?.data||{};
+      await pool.query(`UPDATE orders SET status='DELIVERY_REQUESTED',lalamove_order_id=$1,lalamove_tracking_url=$2 WHERE id=$3`,[String(d.orderId||''),d.shareLink||null,o.id]);
+      return res.json({ok:true,provider:'LALAMOVE',status:d.status||'ON_GOING',orderId:d.orderId,trackingUrl:d.shareLink||null});
+    }
     const token=await getUberAccessToken();
     const a=o.address||{};
     const orderItems=o.items.map(i=>({name:i.name,description:i.name,external_id:String(i.productId),quantity:i.quantity,price:Number(i.unitPriceCents),currency_code:'BRL'}));
@@ -390,6 +423,8 @@ app.post('/api/orders/:id/request-delivery', async (req,res)=>{
     res.json({ok:true,provider:'UBER_DIRECT',status:'DELIVERY_REQUESTED',orderId:data.order_id,trackingUrl:data.order_tracking_url||null});
   }catch(e){console.error('Request delivery error:',e);res.status(502).json({error:e.message||'Não foi possível solicitar o entregador.'});}
 });
+
+app.post('/api/webhooks/lalamove', async (req,res)=>{try{const d=req.body?.data||req.body||{};const oid=String(d.orderId||d.order_id||'');const st=String(d.status||'').toUpperCase();const map={ON_GOING:'DRIVER_ASSIGNED',PICKED_UP:'OUT_FOR_DELIVERY',DELIVERED:'DELIVERED',SIGNED:'DELIVERED',FAILED:'REJECTED',CANCELED:'REJECTED'};if(oid&&map[st])await pool.query(`UPDATE orders SET status=$1 WHERE lalamove_order_id=$2`,[map[st],oid]);res.sendStatus(200);}catch(e){console.error('Lalamove webhook error:',e);res.sendStatus(500);}});
 
 app.post('/api/orders/:id/confirm-receipt', async (req,res)=>{ const r=await pool.query(`UPDATE orders SET status='DELIVERED',customer_confirmed_at=NOW(),delivered_at=NOW() WHERE id=$1 AND status='OUT_FOR_DELIVERY' AND payment_status='PAID' RETURNING id,status,customer_confirmed_at`,[req.params.id]); if(!r.rowCount)return res.status(409).json({error:'Pedido não está aguardando confirmação.'}); res.json(r.rows[0]); });
 app.post('/api/orders/:id/review', async (req,res)=>{ const {stars=null,comment=''}=req.body||{}; if(stars!==null&&(!Number.isInteger(stars)||stars<1||stars>5))return res.status(400).json({error:'Nota inválida.'}); const order=await pool.query(`SELECT id,status,customer_confirmed_at FROM orders WHERE id=$1`,[req.params.id]); if(!order.rowCount||order.rows[0].status!=='DELIVERED'||!order.rows[0].customer_confirmed_at)return res.status(403).json({error:'Só é possível avaliar após confirmar o recebimento.'}); try{const r=await pool.query(`INSERT INTO reviews(order_id,stars,comment) VALUES($1,$2,$3) RETURNING *`,[req.params.id,stars,comment?.trim()||'']);res.status(201).json(r.rows[0]);}catch(e){if(e.code==='23505')return res.status(409).json({error:'Este pedido já foi avaliado.'});res.status(500).json({error:'Não foi possível salvar a avaliação.'});} });

@@ -35,3 +35,7 @@ Em produção, configure `UBER_DIRECT_STORE_ID` com o Store ID real retornado/on
 
 ## Atendimento humano no WhatsApp
 Quando o cliente pede atendente, `human_mode` é ativado e o bot fica em silêncio. A resposta humana deve ser enviada pelo módulo **WhatsApp** do Gestor (`/gestor`), que registra `human_last_reply_at`. O temporizador é reiniciado a cada resposta humana. Após 5 minutos sem nova resposta humana, o backend desativa `human_mode` e o bot volta a responder à próxima mensagem do cliente. Também existe a ação manual **Devolver ao bot agora**.
+
+
+## Lalamove
+Configure `DELIVERY_PROVIDER=lalamove`, as credenciais `LALAMOVE_API_KEY` e `LALAMOVE_API_SECRET`, `LALAMOVE_MARKET=BR`, `LALAMOVE_LANGUAGE=pt_BR`, `LALAMOVE_SERVICE_TYPE=MOTORCYCLE`, `LALAMOVE_SENDER_PHONE` e os dados fixos de retirada. O webhook usa `/api/webhooks/lalamove`.
