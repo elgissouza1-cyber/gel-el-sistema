@@ -47,10 +47,43 @@ function deliveryAddressText(a){
 }
 
 const geocodeCache = new Map();
-async function geocodeDeliveryAddress(address){
+const DELIVERY_MAX_RADIUS_KM = Number(process.env.DELIVERY_MAX_RADIUS_KM || 10);
+
+function distanceKm(lat1, lng1, lat2, lng2){
+  const toRad = n => Number(n) * Math.PI / 180;
+  const R = 6371;
+  const dLat = toRad(Number(lat2) - Number(lat1));
+  const dLng = toRad(Number(lng2) - Number(lng1));
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+async function geocodeByBrasilApi(address){
+  const cep = String(address?.cep || '').replace(/\D/g, '');
+  if (cep.length !== 8) return null;
+  const url = `https://brasilapi.com.br/api/cep/v2/${cep}`;
+  const r = await fetch(url, {headers:{'Accept':'application/json'}});
+  if (!r.ok) return null;
+  const data = await r.json().catch(()=>null);
+  const lat = Number(data?.location?.coordinates?.latitude);
+  const lng = Number(data?.location?.coordinates?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    lat,
+    lng,
+    source: 'BRASILAPI',
+    postalAddress: {
+      street: data?.street || address.street,
+      neighborhood: data?.neighborhood || address.neighborhood,
+      city: data?.city || address.city,
+      state: data?.state || address.state,
+      cep: data?.cep || address.cep
+    }
+  };
+}
+
+async function geocodeByNominatim(address){
   const full = deliveryAddressText(address);
-  const key = `${full}|${address?.cep||''}`.toLowerCase();
-  if (geocodeCache.has(key)) return geocodeCache.get(key);
   const queries = [
     [full, 'Brasil'].filter(Boolean).join(', '),
     address?.cep ? `${String(address.cep).replace(/\D/g,'')}, Brasil` : ''
@@ -63,16 +96,34 @@ async function geocodeDeliveryAddress(address){
       const data = await r.json().catch(()=>[]);
       const hit = Array.isArray(data) ? data[0] : null;
       const lat = Number(hit?.lat), lng = Number(hit?.lon);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        const result = {lat,lng};
-        geocodeCache.set(key,result);
-        return result;
-      }
-    } catch(e) { console.warn('Geocoding attempt failed:', e.message); }
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return {lat,lng,source:'NOMINATIM'};
+    } catch(e) { console.warn('Nominatim fallback failed:', e.message); }
   }
-  throw new Error('Não foi possível localizar o endereço para calcular a entrega. Confira rua, número, bairro e CEP.');
+  return null;
 }
 
+async function geocodeDeliveryAddress(address){
+  const key = `${String(address?.cep||'').replace(/\D/g,'')}|${deliveryAddressText(address)}`.toLowerCase();
+  if (geocodeCache.has(key)) return geocodeCache.get(key);
+
+  let result = null;
+  try { result = await geocodeByBrasilApi(address); }
+  catch(e) { console.warn('BrasilAPI CEP geocoding failed:', e.message); }
+  if (!result) result = await geocodeByNominatim(address);
+  if (!result) throw new Error('Não foi possível localizar o CEP para calcular a entrega. Confira o CEP e o endereço.');
+
+  const pickup = lalamovePickup();
+  const pickupLat = Number(pickup.coordinates.lat), pickupLng = Number(pickup.coordinates.lng);
+  const km = distanceKm(pickupLat, pickupLng, result.lat, result.lng);
+  result.distanceKm = Number(km.toFixed(2));
+
+  if (Number.isFinite(DELIVERY_MAX_RADIUS_KM) && DELIVERY_MAX_RADIUS_KM > 0 && km > DELIVERY_MAX_RADIUS_KM) {
+    throw new Error(`Endereço fora da área de entrega. A área máxima é de ${DELIVERY_MAX_RADIUS_KM} km da loja; este endereço está a aproximadamente ${result.distanceKm} km.`);
+  }
+
+  geocodeCache.set(key,result);
+  return result;
+}
 
 const lalamoveApiBase = 'https://rest.lalamove.com';
 function lalamoveHeaders(method, pathName, body='') {
@@ -321,7 +372,7 @@ app.post('/api/delivery/estimate', async (req,res)=>{
       const feeCents=Math.round(Number(d?.priceBreakdown?.total||0)*100);
       const expiresAt=d.expiresAt?new Date(d.expiresAt):new Date(Date.now()+5*60*1000);
       await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,$3,$4,'LALAMOVE',$5) ON CONFLICT(estimate_id) DO UPDATE SET fee_cents=EXCLUDED.fee_cents,currency_code=EXCLUDED.currency_code,expires_at=EXCLUDED.expires_at,provider='LALAMOVE',address=EXCLUDED.address`,[d.quotationId,feeCents,d?.priceBreakdown?.currency||'BRL',expiresAt,quoteAddress]);
-      return res.json({provider:'LALAMOVE',estimateId:d.quotationId,feeCents,deliveryFee:feeCents/100,currency:d?.priceBreakdown?.currency||'BRL',expiresAt:expiresAt.toISOString(),etd:null});
+      return res.json({provider:'LALAMOVE',estimateId:d.quotationId,feeCents,deliveryFee:feeCents/100,currency:d?.priceBreakdown?.currency||'BRL',expiresAt:expiresAt.toISOString(),etd:null,distanceKm:coords.distanceKm});
     }
     const token = await getUberAccessToken();
     const formatted = deliveryAddressText(address);
