@@ -46,6 +46,34 @@ function deliveryAddressText(a){
   return [a?.street && `${a.street}, ${a.number||'s/n'}`, a?.complement, a?.neighborhood, a?.city, a?.state, a?.cep].filter(Boolean).join(', ');
 }
 
+const geocodeCache = new Map();
+async function geocodeDeliveryAddress(address){
+  const full = deliveryAddressText(address);
+  const key = `${full}|${address?.cep||''}`.toLowerCase();
+  if (geocodeCache.has(key)) return geocodeCache.get(key);
+  const queries = [
+    [full, 'Brasil'].filter(Boolean).join(', '),
+    address?.cep ? `${String(address.cep).replace(/\D/g,'')}, Brasil` : ''
+  ].filter(Boolean);
+  for (const q of queries){
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&accept-language=pt-BR&q=${encodeURIComponent(q)}`;
+      const r = await fetch(url, {headers:{'User-Agent':'GelEl-Suquinhos-Gourmet/1.0','Accept':'application/json'}});
+      if (!r.ok) continue;
+      const data = await r.json().catch(()=>[]);
+      const hit = Array.isArray(data) ? data[0] : null;
+      const lat = Number(hit?.lat), lng = Number(hit?.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        const result = {lat,lng};
+        geocodeCache.set(key,result);
+        return result;
+      }
+    } catch(e) { console.warn('Geocoding attempt failed:', e.message); }
+  }
+  throw new Error('Não foi possível localizar o endereço para calcular a entrega. Confira rua, número, bairro e CEP.');
+}
+
+
 const lalamoveApiBase = 'https://rest.lalamove.com';
 function lalamoveHeaders(method, pathName, body='') {
   const key=process.env.LALAMOVE_API_KEY, secret=process.env.LALAMOVE_API_SECRET;
@@ -58,7 +86,14 @@ function lalamoveHeaders(method, pathName, body='') {
 function normalizePhone(phone){const d=String(phone||'').replace(/\D/g,''); if(!d)return ''; return d.startsWith('55')?`+${d}`:`+55${d}`;}
 function lalamovePickup(){return {coordinates:{lat:String(process.env.LALAMOVE_PICKUP_LAT||'-2.55925'),lng:String(process.env.LALAMOVE_PICKUP_LNG||'-44.20864')},address:process.env.LALAMOVE_PICKUP_ADDRESS||'Rua Nossa Senhora da Conceição, 04, Vila Pavão Filho, São Luís - MA, 65058-641'};}
 async function lalamoveRequest(method,pathName,payload){const body=method==='GET'?'':JSON.stringify(payload);const r=await fetch(`${lalamoveApiBase}${pathName}`,{method,headers:lalamoveHeaders(method,pathName,body),body:method==='GET'?undefined:body});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(`Lalamove ${pathName} falhou (${r.status}): ${data?.message||JSON.stringify(data)}`);return data;}
-async function getLalamoveQuotation(address){const body={data:{serviceType:process.env.LALAMOVE_SERVICE_TYPE||'LALAGO',language:process.env.LALAMOVE_LANGUAGE||'pt_BR',stops:[lalamovePickup(),{address:deliveryAddressText(address),...(address?.lat&&address?.lng?{coordinates:{lat:String(address.lat),lng:String(address.lng)}}:{})}],item:{quantity:'1',weight:'LESS_THAN_3_KG',categories:['FOOD_DELIVERY'],handlingInstructions:['KEEP_UPRIGHT']}}};return lalamoveRequest('POST','/v3/quotations',body);}
+async function getLalamoveQuotation(address){
+  const coordinates = Number.isFinite(Number(address?.lat)) && Number.isFinite(Number(address?.lng))
+    ? {lat:Number(address.lat),lng:Number(address.lng)}
+    : await geocodeDeliveryAddress(address);
+  const normalizedAddress = deliveryAddressText(address);
+  const body={data:{serviceType:process.env.LALAMOVE_SERVICE_TYPE||'LALAGO',language:process.env.LALAMOVE_LANGUAGE||'pt_BR',stops:[lalamovePickup(),{coordinates:{lat:String(coordinates.lat),lng:String(coordinates.lng)},address:normalizedAddress}],item:{quantity:'1',weight:'LESS_THAN_3_KG',categories:['FOOD_DELIVERY'],handlingInstructions:['KEEP_UPRIGHT']}}};
+  return lalamoveRequest('POST','/v3/quotations',body);
+}
 async function createLalamoveOrder(order,quotation){const s=quotation?.data?.stops||[];if(s.length<2)throw new Error('Cotação Lalamove sem pontos válidos.');const senderPhone=normalizePhone(process.env.LALAMOVE_SENDER_PHONE);if(!senderPhone)throw new Error('LALAMOVE_SENDER_PHONE não configurado.');const body={data:{quotationId:quotation.data.quotationId,sender:{stopId:s[0].stopId,name:process.env.LALAMOVE_SENDER_NAME||'Gel & El Suquinhos Gourmet',phone:senderPhone},recipients:[{stopId:s[1].stopId,name:order.customer_name,phone:normalizePhone(order.customer_phone),remarks:order.address?.reference||order.address?.complement||undefined}],isPODEnabled:true,metadata:{restaurantOrderId:String(order.id),restaurantName:'Gel & El Suquinhos Gourmet'}}};return lalamoveRequest('POST','/v3/orders',body);}
 
 async function initDb() {
@@ -66,6 +101,7 @@ async function initDb() {
   await pool.query(schema);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT, ADD COLUMN IF NOT EXISTS lalamove_order_id TEXT, ADD COLUMN IF NOT EXISTS lalamove_tracking_url TEXT`);
   await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS human_last_reply_at TIMESTAMPTZ`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS whatsapp_processed_messages (message_id TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   await pool.query(`CREATE TABLE IF NOT EXISTS delivery_quotes (estimate_id TEXT PRIMARY KEY, fee_cents INTEGER NOT NULL, currency_code TEXT NOT NULL DEFAULT 'BRL', expires_at TIMESTAMPTZ NOT NULL, provider TEXT NOT NULL DEFAULT 'UBER_DIRECT', address JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
   if (rows[0].count === 0) {
@@ -158,6 +194,10 @@ async function processWhatsAppWebhook(body) {
       const from = message.from;
       const text = (message.text?.body || '').trim();
       if (!from || !text) continue;
+      if (message.id) {
+        const seen = await pool.query(`INSERT INTO whatsapp_processed_messages(message_id) VALUES($1) ON CONFLICT(message_id) DO NOTHING RETURNING message_id`, [String(message.id)]);
+        if (!seen.rowCount) continue;
+      }
       await handleIncomingWhatsApp(from, text);
     }
   }
@@ -203,6 +243,13 @@ async function handleIncomingWhatsApp(from, text) {
   // O modo humano só termina 5 minutos após a ÚLTIMA resposta enviada pelo atendente.
   const asksHuman = /\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\b/.test(normalized)
     && !/\b(nao|não)\s+(quero|preciso|quero falar)\b/.test(normalized);
+
+  // Comando explícito do cliente para devolver a conversa ao bot.
+  if (/^(bot|voltar|voltar bot|encerrar atendimento|retomar bot)$/.test(normalized)) {
+    await pool.query(`UPDATE whatsapp_conversations SET human_mode=FALSE, human_last_reply_at=NULL, updated_at=NOW() WHERE phone=$1`, [from]);
+    await sendWhatsAppText(from, `Pronto! 💜 O atendimento automático voltou. Escreva *CARDÁPIO* para ver os sabores ou *PEDIDO* para receber o link.`);
+    return;
+  }
 
   await expireHumanMode(from);
   const conversation = await getWhatsAppConversation(from);
@@ -267,11 +314,13 @@ app.post('/api/delivery/estimate', async (req,res)=>{
       return res.json({provider:'MOCK',estimateId,feeCents,deliveryFee:feeCents/100,currency:'BRL',expiresAt:expiresAt.toISOString()});
     }
     if (mode === 'lalamove') {
-      const quotation = await getLalamoveQuotation(address);
+      const coords = await geocodeDeliveryAddress(address);
+      const quoteAddress = {...address,lat:coords.lat,lng:coords.lng};
+      const quotation = await getLalamoveQuotation(quoteAddress);
       const d=quotation?.data; if(!d?.quotationId) throw new Error('Lalamove não retornou uma cotação válida.');
       const feeCents=Math.round(Number(d?.priceBreakdown?.total||0)*100);
       const expiresAt=d.expiresAt?new Date(d.expiresAt):new Date(Date.now()+5*60*1000);
-      await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,$3,$4,'LALAMOVE',$5) ON CONFLICT(estimate_id) DO UPDATE SET fee_cents=EXCLUDED.fee_cents,currency_code=EXCLUDED.currency_code,expires_at=EXCLUDED.expires_at,provider='LALAMOVE',address=EXCLUDED.address`,[d.quotationId,feeCents,d?.priceBreakdown?.currency||'BRL',expiresAt,address]);
+      await pool.query(`INSERT INTO delivery_quotes(estimate_id,fee_cents,currency_code,expires_at,provider,address) VALUES($1,$2,$3,$4,'LALAMOVE',$5) ON CONFLICT(estimate_id) DO UPDATE SET fee_cents=EXCLUDED.fee_cents,currency_code=EXCLUDED.currency_code,expires_at=EXCLUDED.expires_at,provider='LALAMOVE',address=EXCLUDED.address`,[d.quotationId,feeCents,d?.priceBreakdown?.currency||'BRL',expiresAt,quoteAddress]);
       return res.json({provider:'LALAMOVE',estimateId:d.quotationId,feeCents,deliveryFee:feeCents/100,currency:d?.priceBreakdown?.currency||'BRL',expiresAt:expiresAt.toISOString(),etd:null});
     }
     const token = await getUberAccessToken();
@@ -353,6 +402,7 @@ app.post('/api/orders', async (req, res) => {
       fee = Number(quote.fee_cents);
     }
     const total = subtotal + fee;
+    if (orderType === 'DELIVERY' && quote?.address) address.lat = quote.address.lat, address.lng = quote.address.lng;
     const c = await client.query(`INSERT INTO customers(name,phone) VALUES($1,$2) ON CONFLICT(phone) DO UPDATE SET name=EXCLUDED.name,updated_at=NOW() RETURNING id`, [customer.name.trim(), customer.phone.trim()]);
     const customerId = c.rows[0].id;
     const o = await client.query(`INSERT INTO orders(status,payment_status,customer_id,customer_name,customer_phone,order_type,subtotal_cents,delivery_fee_cents,total_cents,address,delivery_estimate_id,delivery_estimate_expires_at) VALUES('PENDING_PAYMENT','PENDING',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [customerId,customer.name.trim(),customer.phone.trim(),orderType,subtotal,fee,total,orderType==='DELIVERY'?address:null,quote?.estimate_id||null,quote?.expires_at||null]);
