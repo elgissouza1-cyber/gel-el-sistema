@@ -295,7 +295,7 @@ async function handleIncomingWhatsApp(from, text) {
 
   if (/^(bot|voltar|voltar bot|encerrar atendimento|retomar bot)$/.test(normalized)) {
     await pool.query(`UPDATE whatsapp_conversations SET human_mode=FALSE, human_last_reply_at=NULL, updated_at=NOW() WHERE phone=$1`, [from]);
-    await sendWhatsAppText(from, `Pronto! 💜 O atendimento automático voltou. Escreva *CARDÁPIO* para ver os sabores e preços.`);
+    await sendWhatsAppText(from, `Pronto! 💜 O atendimento automático voltou. Escreva *CARDÁPIO* para ver os produtos.`);
     return;
   }
 
@@ -317,60 +317,63 @@ A partir de agora, o atendimento automático ficará pausado nesta conversa enqu
     return;
   }
 
-  const menu = `💜 *CARDÁPIO — GEL & EL SUQUINHOS GOURMET*
+  const catalog = `💜 *CARDÁPIO GEL & EL*
 
-*🍧 GELADINHOS GOURMET*
+🥭 *GELADINHOS GOURMET*
 • Maracujá com gotas — R$ 4,00
 • Maracujá trufado — R$ 5,00
 • Ninho com morango — R$ 6,00
 • Prestígio — R$ 5,00
+• Ninho com doce de leite — R$ 6,00
+• Pudim — R$ 6,00
 
-*🥛 GELADINHOS TRADICIONAIS AO LEITE*
-• R$ 4,00
+🥛 *GELADINHOS TRADICIONAIS AO LEITE*
+• Cupuaçu ao leite — R$ 4,00
+• Maracujá ao leite — R$ 4,00
+• Abacate — R$ 4,00
 
-*🍰 BOLO DE POTE*
-• Chocninho — R$ 6,00
-• Maracujá — R$ 6,00
-• Chocolate com maracujá — R$ 10,00
-• Choconinho — R$ 10,00
-• Sensação — R$ 10,00
-• Morango cremoso — R$ 10,00
-• Ninho com geleia de morango — R$ 10,00
+🍰 *BOLO DE POTE*
+• Chocninho — R$ 6,00 — 150 g aprox.
+• Maracujá — R$ 6,00 — 150 g aprox.
+• Chocolate com maracujá — R$ 10,00 — 300 g aprox.
+• Choconinho — R$ 10,00 — 300 g aprox.
+• Sensação — R$ 10,00 — 300 g aprox.
+• Morango cremoso — R$ 10,00 — 300 g aprox.
+• Ninho com geleia de morango — R$ 10,00 — 300 g aprox.
 
-*🍮 PUDIM*
-• Geladinho de pudim — R$ 6,00
-• Pudim no pote — R$ 15,00
+🍮 *PUDIM*
+• Pudim 80 ml — R$ 5,00
+• Pudim 120 ml — R$ 8,00
+• Pudim grande — R$ 60,00 — sob encomenda
 
-*🍫 MOUSSES*
-• 200 ml — R$ 9,00
+🍫 *MOUSSES — 200 ml*
+• Morango — R$ 9,00
+• Limão — R$ 9,00
+• Maracujá — R$ 9,00
 
-*🎂 MINI BOLO CASEIRO*
-• Bolo Vulcão de Chocolate com Ninho — 350 g aprox.
+🎂 *MINI BOLO CASEIRO*
+• Bolo Vulcão — 350 g aprox.
+• Consulte os sabores disponíveis.
 
 💜 Para falar com uma pessoa, escreva *ATENDENTE*.`;
 
-  if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?|sabor(es)?|produtos?)$/.test(normalized)
-      || normalized.includes('cardapio')
-      || normalized.includes('preco')
-      || normalized.includes('sabor')
-      || normalized.includes('produto')) {
-    await sendWhatsAppText(from, menu);
+  if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?)$/.test(normalized)
+      || normalized.includes('cardapio') || normalized.includes('preco') || normalized.includes('sabor') || normalized.includes('produto')) {
+    await sendWhatsAppText(from, catalog);
     return;
   }
 
   if (normalized.includes('pedido') || normalized.includes('comprar') || normalized.includes('site') || normalized.includes('link')) {
-    await sendWhatsAppText(from, `Claro! 💜 Posso te atender por aqui.
+    await sendWhatsAppText(from, `Claro! 💜 Posso te passar o cardápio e os preços aqui mesmo no WhatsApp.
 
-${menu}
-
-Se quiser fazer o pedido, me diga quais produtos você deseja ou escreva *ATENDENTE* para falar com uma pessoa.`);
+Escreva *CARDÁPIO* para ver os produtos disponíveis ou *ATENDENTE* para falar com uma pessoa.`);
     return;
   }
 
   if (normalized.includes('horario') || normalized.includes('funcionamento')) {
     await sendWhatsAppText(from, `💜 Nosso atendimento é feito por aqui.
 
-${menu}`);
+Escreva *CARDÁPIO* para ver os produtos ou *ATENDENTE* para falar com uma pessoa.`);
     return;
   }
 
@@ -378,7 +381,6 @@ ${menu}`);
 
 Posso ajudar com:
 • *CARDÁPIO* — sabores e preços
-• *PEDIDO* — fazer seu pedido por aqui
 • *ATENDENTE* — falar com uma pessoa
 
 É só me dizer o que você precisa. 😊`);
