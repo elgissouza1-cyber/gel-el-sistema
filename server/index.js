@@ -288,27 +288,21 @@ async function expireHumanMode(phone) {
 }
 
 async function handleIncomingWhatsApp(from, text) {
-  const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  const normalized = text.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim();
 
-  // HANDOFF HUMANO: cliente pede atendente -> silêncio total do bot.
-  // O modo humano só termina 5 minutos após a ÚLTIMA resposta enviada pelo atendente.
-  const asksHuman = /\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\b/.test(normalized)
-    && !/\b(nao|não)\s+(quero|preciso|quero falar)\b/.test(normalized);
+  const asksHuman = /\\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\\b/.test(normalized)
+    && !/\\b(nao|não)\\s+(quero|preciso|quero falar)\\b/.test(normalized);
 
-  // Comando explícito do cliente para devolver a conversa ao bot.
   if (/^(bot|voltar|voltar bot|encerrar atendimento|retomar bot)$/.test(normalized)) {
     await pool.query(`UPDATE whatsapp_conversations SET human_mode=FALSE, human_last_reply_at=NULL, updated_at=NOW() WHERE phone=$1`, [from]);
-    await sendWhatsAppText(from, `Pronto! 💜 O atendimento automático voltou. Escreva *CARDÁPIO* para ver os sabores ou *PEDIDO* para receber o link.`);
+    await sendWhatsAppText(from, `Pronto! 💜 O atendimento automático voltou. Escreva *CARDÁPIO* para ver os sabores e preços.`);
     return;
   }
 
   await expireHumanMode(from);
   const conversation = await getWhatsAppConversation(from);
 
-  if (conversation?.human_mode) {
-    // Atendimento humano ativo: nunca responder automaticamente.
-    return;
-  }
+  if (conversation?.human_mode) return;
 
   if (asksHuman) {
     await pool.query(
@@ -318,25 +312,56 @@ async function handleIncomingWhatsApp(from, text) {
          SET human_mode=TRUE, human_requested_at=NOW(), human_last_reply_at=NULL, updated_at=NOW()`,
       [from]
     );
-    await sendWhatsAppText(from, `Claro! 💜 Vou encaminhar você para um atendente da Gel & El.\n\nA partir de agora, não vou mais enviar mensagens automáticas nesta conversa. Aguarde só um pouquinho. 😊`);
+    await sendWhatsAppText(from, `Claro! 💜 Vou encaminhar você para um atendente da Gel & El.
+
+A partir de agora, o atendimento automático ficará pausado nesta conversa enquanto você fala com uma pessoa. 😊`);
     return;
   }
 
   if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?)$/.test(normalized)) {
     const { rows } = await pool.query(`SELECT name,price_cents FROM products WHERE active=true AND stock>0 ORDER BY category NULLS LAST, name`);
     const lines = rows.length ? rows.map(p => `• ${p.name} — R$ ${(p.price_cents/100).toFixed(2).replace('.', ',')}`) : ['No momento estamos sem produtos disponíveis.'];
-    await sendWhatsAppText(from, `Olá! 💜 Bem-vindo(a) à Gel & El Suquinhos Gourmet!\n\nNossos produtos disponíveis:\n${lines.join('\n')}\n\nPara fazer o pedido pelo site:\n${storeUrl()}\n\nSe precisar, escreva *PEDIDO* para receber o link novamente.`);
+    await sendWhatsAppText(from, `Olá! 💜 Bem-vindo(a) à Gel & El Suquinhos Gourmet!
+
+Nossos produtos disponíveis:
+${lines.join('\\n')}
+
+Para falar com uma pessoa, escreva *ATENDENTE*.`);
     return;
   }
-  if (normalized.includes('link') || normalized.includes('pedido') || normalized.includes('comprar') || normalized.includes('site')) {
-    await sendWhatsAppText(from, `Claro! 💜 Faça seu pedido pelo nosso site:\n${storeUrl()}\n\nSe quiser saber sabores e preços, escreva *CARDÁPIO*.`);
+
+  if (normalized.includes('cardapio') || normalized.includes('preco') || normalized.includes('sabor') || normalized.includes('produto')) {
+    const { rows } = await pool.query(`SELECT name,price_cents FROM products WHERE active=true AND stock>0 ORDER BY category NULLS LAST, name`);
+    const lines = rows.length ? rows.map(p => `• ${p.name} — R$ ${(p.price_cents/100).toFixed(2).replace('.', ',')}`) : ['No momento estamos sem produtos disponíveis.'];
+    await sendWhatsAppText(from, `💜 Cardápio Gel & El
+
+${lines.join('\\n')}
+
+Para falar com uma pessoa, escreva *ATENDENTE*.`);
     return;
   }
+
+  if (normalized.includes('pedido') || normalized.includes('comprar') || normalized.includes('site') || normalized.includes('link')) {
+    await sendWhatsAppText(from, `Claro! 💜 Posso te passar os sabores e preços aqui mesmo no WhatsApp.
+
+Escreva *CARDÁPIO* para ver os produtos disponíveis ou *ATENDENTE* para falar com uma pessoa.`);
+    return;
+  }
+
   if (normalized.includes('horario') || normalized.includes('funcionamento')) {
-    await sendWhatsAppText(from, `Nosso atendimento é pelo WhatsApp e pelo site. 💜\n\nPara o horário atualizado, consulte o Gestor da Gel & El ou escreva *PEDIDO* para acessar o site.`);
+    await sendWhatsAppText(from, `💜 Nosso atendimento é feito por aqui.
+
+Escreva *CARDÁPIO* para ver os produtos ou *ATENDENTE* para falar com uma pessoa.`);
     return;
   }
-  await sendWhatsAppText(from, `Oi! 💜 Sou o atendimento automático da Gel & El.\n\nPosso ajudar com:\n• *CARDÁPIO* — sabores e preços\n• *PEDIDO* — link para comprar\n\nSe precisar falar com uma pessoa, escreva *ATENDENTE*.`);
+
+  await sendWhatsAppText(from, `Oi! 💜 Sou o atendimento automático da Gel & El.
+
+Posso ajudar com:
+• *CARDÁPIO* — sabores e preços
+• *ATENDENTE* — falar com uma pessoa
+
+É só me dizer o que você precisa. 😊`);
 }
 
 // ---------- Customer / order API ----------
