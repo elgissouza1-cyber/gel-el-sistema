@@ -355,7 +355,7 @@ A partir de agora, o atendimento automático ficará pausado nesta conversa enqu
 • Bolo Vulcão — 350 g aprox.
 • Consulte os sabores disponíveis.
 
-💜 Para falar com uma pessoa, escreva *ATENDENTE*.`;
+⚠️ *Os sabores e produtos podem variar conforme a produção e o estoque do dia. Sempre confirme a disponibilidade antes de fazer o pedido.*\n\n💜 Para falar com uma pessoa, escreva *ATENDENTE*.`;
 
   if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?)$/.test(normalized)
       || normalized.includes('cardapio') || normalized.includes('preco') || normalized.includes('sabor') || normalized.includes('produto')) {
