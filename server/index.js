@@ -169,6 +169,18 @@ async function initDb() {
   }
 }
 
+app.get('/api/delivery/direct-fee', (req, res) => {
+  const distanceKmValue = Number(req.query?.distanceKm);
+  const feeCents = directDeliveryFee(distanceKmValue);
+  if (feeCents == null) {
+    if (Number.isFinite(distanceKmValue) && distanceKmValue > 10) {
+      return res.json({ ok: true, distanceKm: distanceKmValue, feeCents: null, fee: null, message: 'Consulte a disponibilidade e a taxa para distâncias acima de 10 km.' });
+    }
+    return res.status(400).json({ ok: false, error: 'Informe uma distância válida em km.' });
+  }
+  res.json({ ok: true, distanceKm: distanceKmValue, feeCents, fee: feeCents / 100 });
+});
+
 app.get('/api/health', async (_req, res) => {
   try { await pool.query('SELECT 1'); res.json({ ok: true, database: 'connected', whatsapp: Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) }); }
   catch { res.status(503).json({ ok: false, database: 'unavailable' }); }
@@ -252,6 +264,31 @@ async function processWhatsAppWebhook(body) {
       await handleIncomingWhatsApp(from, text);
     }
   }
+}
+
+const DIRECT_DELIVERY_RATES = [
+  { maxKm: 1, feeCents: 375 },
+  { maxKm: 2, feeCents: 500 },
+  { maxKm: 3, feeCents: 650 },
+  { maxKm: 4, feeCents: 800 },
+  { maxKm: 5, feeCents: 900 },
+  { maxKm: 6, feeCents: 1000 },
+  { maxKm: 7, feeCents: 1100 },
+  { maxKm: 8, feeCents: 1200 },
+  { maxKm: 10, feeCents: 1400 }
+];
+
+function directDeliveryFee(distanceKmValue) {
+  const km = Number(distanceKmValue);
+  if (!Number.isFinite(km) || km < 0) return null;
+  const rate = DIRECT_DELIVERY_RATES.find(r => km <= r.maxKm);
+  return rate ? rate.feeCents : null;
+}
+
+function directDeliveryText(distanceKmValue) {
+  const feeCents = directDeliveryFee(distanceKmValue);
+  if (feeCents == null) return 'Para distâncias acima de 10 km, consulte a disponibilidade e a taxa de entrega.';
+  return `🚚 Taxa de entrega: R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}.`;
 }
 
 async function sendWhatsAppText(to, text) {
