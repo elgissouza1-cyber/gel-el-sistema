@@ -301,7 +301,6 @@ async function handleIncomingWhatsApp(from, text) {
 
   await expireHumanMode(from);
   const conversation = await getWhatsAppConversation(from);
-
   if (conversation?.human_mode) return;
 
   if (asksHuman) {
@@ -318,40 +317,60 @@ A partir de agora, o atendimento automático ficará pausado nesta conversa enqu
     return;
   }
 
-  if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?)$/.test(normalized)) {
-    const { rows } = await pool.query(`SELECT name,price_cents FROM products WHERE active=true AND stock>0 ORDER BY category NULLS LAST, name`);
-    const lines = rows.length ? rows.map(p => `• ${p.name} — R$ ${(p.price_cents/100).toFixed(2).replace('.', ',')}`) : ['No momento estamos sem produtos disponíveis.'];
-    await sendWhatsAppText(from, `Olá! 💜 Bem-vindo(a) à Gel & El Suquinhos Gourmet!
+  const menu = `💜 *CARDÁPIO — GEL & EL SUQUINHOS GOURMET*
 
-Nossos produtos disponíveis:
-${lines.join('\\n')}
+*🍧 GELADINHOS GOURMET*
+• Maracujá com gotas — R$ 4,00
+• Maracujá trufado — R$ 5,00
+• Ninho com morango — R$ 6,00
+• Prestígio — R$ 5,00
 
-Para falar com uma pessoa, escreva *ATENDENTE*.`);
-    return;
-  }
+*🥛 GELADINHOS TRADICIONAIS AO LEITE*
+• R$ 4,00
 
-  if (normalized.includes('cardapio') || normalized.includes('preco') || normalized.includes('sabor') || normalized.includes('produto')) {
-    const { rows } = await pool.query(`SELECT name,price_cents FROM products WHERE active=true AND stock>0 ORDER BY category NULLS LAST, name`);
-    const lines = rows.length ? rows.map(p => `• ${p.name} — R$ ${(p.price_cents/100).toFixed(2).replace('.', ',')}`) : ['No momento estamos sem produtos disponíveis.'];
-    await sendWhatsAppText(from, `💜 Cardápio Gel & El
+*🍰 BOLO DE POTE*
+• Chocninho — R$ 6,00
+• Maracujá — R$ 6,00
+• Chocolate com maracujá — R$ 10,00
+• Choconinho — R$ 10,00
+• Sensação — R$ 10,00
+• Morango cremoso — R$ 10,00
+• Ninho com geleia de morango — R$ 10,00
 
-${lines.join('\\n')}
+*🍮 PUDIM*
+• Geladinho de pudim — R$ 6,00
+• Pudim no pote — R$ 15,00
 
-Para falar com uma pessoa, escreva *ATENDENTE*.`);
+*🍫 MOUSSES*
+• 200 ml — R$ 9,00
+
+*🎂 MINI BOLO CASEIRO*
+• Bolo Vulcão de Chocolate com Ninho — 350 g aprox.
+
+💜 Para falar com uma pessoa, escreva *ATENDENTE*.`;
+
+  if (/^(oi|ola|olá|bom dia|boa tarde|boa noite|menu|cardapio|cardápio|precos?|preços?|sabor(es)?|produtos?)$/.test(normalized)
+      || normalized.includes('cardapio')
+      || normalized.includes('preco')
+      || normalized.includes('sabor')
+      || normalized.includes('produto')) {
+    await sendWhatsAppText(from, menu);
     return;
   }
 
   if (normalized.includes('pedido') || normalized.includes('comprar') || normalized.includes('site') || normalized.includes('link')) {
-    await sendWhatsAppText(from, `Claro! 💜 Posso te passar os sabores e preços aqui mesmo no WhatsApp.
+    await sendWhatsAppText(from, `Claro! 💜 Posso te atender por aqui.
 
-Escreva *CARDÁPIO* para ver os produtos disponíveis ou *ATENDENTE* para falar com uma pessoa.`);
+${menu}
+
+Se quiser fazer o pedido, me diga quais produtos você deseja ou escreva *ATENDENTE* para falar com uma pessoa.`);
     return;
   }
 
   if (normalized.includes('horario') || normalized.includes('funcionamento')) {
     await sendWhatsAppText(from, `💜 Nosso atendimento é feito por aqui.
 
-Escreva *CARDÁPIO* para ver os produtos ou *ATENDENTE* para falar com uma pessoa.`);
+${menu}`);
     return;
   }
 
@@ -359,6 +378,7 @@ Escreva *CARDÁPIO* para ver os produtos ou *ATENDENTE* para falar com uma pesso
 
 Posso ajudar com:
 • *CARDÁPIO* — sabores e preços
+• *PEDIDO* — fazer seu pedido por aqui
 • *ATENDENTE* — falar com uma pessoa
 
 É só me dizer o que você precisa. 😊`);
