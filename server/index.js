@@ -152,6 +152,7 @@ async function initDb() {
   await pool.query(schema);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_estimate_id TEXT, ADD COLUMN IF NOT EXISTS delivery_estimate_expires_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS uber_delivery_order_id TEXT, ADD COLUMN IF NOT EXISTS uber_tracking_url TEXT, ADD COLUMN IF NOT EXISTS lalamove_order_id TEXT, ADD COLUMN IF NOT EXISTS lalamove_tracking_url TEXT`);
   await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS human_last_reply_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS delivery_quote_pending BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN IF NOT EXISTS delivery_cep TEXT`);
   await pool.query(`CREATE TABLE IF NOT EXISTS whatsapp_processed_messages (message_id TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   await pool.query(`CREATE TABLE IF NOT EXISTS delivery_quotes (estimate_id TEXT PRIMARY KEY, fee_cents INTEGER NOT NULL, currency_code TEXT NOT NULL DEFAULT 'BRL', expires_at TIMESTAMPTZ NOT NULL, provider TEXT NOT NULL DEFAULT 'UBER_DIRECT', address JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
@@ -351,6 +352,63 @@ async function handleIncomingWhatsApp(from, text) {
     await sendWhatsAppText(from, `Claro! 💜 Vou encaminhar você para um atendente da Gel & El.
 
 A partir de agora, o atendimento automático ficará pausado nesta conversa enquanto você fala com uma pessoa. 😊`);
+    return;
+  }
+
+  // Cotação de entrega direta, sem Uber/Lalamove.
+  if (conversation?.delivery_quote_pending) {
+    const cep = text.replace(/\\D/g, '');
+    if (/^\\d{8}$/.test(cep)) {
+      try {
+        const geo = await geocodeDeliveryAddress({ cep });
+        const feeCents = directDeliveryFee(geo.distanceKm);
+        await pool.query(
+          `UPDATE whatsapp_conversations
+              SET delivery_quote_pending=FALSE, delivery_cep=$2, updated_at=NOW()
+            WHERE phone=$1`,
+          [from, cep]
+        );
+
+        if (feeCents == null) {
+          await sendWhatsAppText(from, `📍 Para este CEP, a distância estimada é de ${geo.distanceKm.toFixed(1).replace('.', ',')} km.
+
+⚠️ Acima de 10 km, precisamos consultar a disponibilidade e a taxa de entrega.
+
+Se quiser, escreva *ATENDENTE* para falar com uma pessoa.`);
+        } else {
+          await sendWhatsAppText(from, `📍 Distância estimada: ${geo.distanceKm.toFixed(1).replace('.', ',')} km.
+
+🚚 *Taxa de entrega: R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}.*
+
+⚠️ A taxa é uma estimativa pela distância. A disponibilidade da entrega deve ser confirmada antes de finalizar o pedido.`);
+        }
+        return;
+      } catch (e) {
+        await pool.query(
+          `UPDATE whatsapp_conversations SET delivery_quote_pending=FALSE, updated_at=NOW() WHERE phone=$1`,
+          [from]
+        );
+        await sendWhatsAppText(from, `Não consegui localizar esse CEP. 💜 Confira o CEP e envie novamente, ou escreva *ATENDENTE* para falar com uma pessoa.`);
+        return;
+      }
+    }
+    await sendWhatsAppText(from, `💜 Me envie somente o CEP com 8 números para eu calcular a taxa de entrega.`);
+    return;
+  }
+
+  if (normalized.includes('entrega') || normalized.includes('entregam') || normalized.includes('taxa de entrega') || normalized.includes('frete')) {
+    await pool.query(
+      `INSERT INTO whatsapp_conversations (phone, human_mode, human_requested_at, human_last_reply_at, delivery_quote_pending, updated_at)
+       VALUES ($1, FALSE, NULL, NULL, TRUE, NOW())
+       ON CONFLICT (phone) DO UPDATE
+         SET delivery_quote_pending=TRUE, updated_at=NOW()`,
+      [from]
+    );
+    await sendWhatsAppText(from, `🚚 *Calculamos a taxa de entrega pela distância.*
+
+Me envie seu *CEP* (8 números) e eu calculo a taxa para você.
+
+⚠️ A disponibilidade da entrega precisa ser confirmada antes de finalizar o pedido.`);
     return;
   }
 
