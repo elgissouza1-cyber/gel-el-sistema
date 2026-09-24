@@ -328,10 +328,10 @@ async function expireHumanMode(phone) {
 }
 
 async function handleIncomingWhatsApp(from, text) {
-  const normalized = text.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim();
+  const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 
-  const asksHuman = /\\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\\b/.test(normalized)
-    && !/\\b(nao|não)\\s+(quero|preciso|quero falar)\\b/.test(normalized);
+  const asksHuman = /\b(atendente|atendimento humano|atendimento com pessoa|pessoa|humano|falar com (uma )?pessoa|falar com (um )?atendente|quero falar com|preciso falar com|quero atendimento)\b/.test(normalized)
+    && !/\b(nao|não)\s+(quero|preciso|quero falar)\b/.test(normalized);
 
   if (/^(bot|voltar|voltar bot|encerrar atendimento|retomar bot)$/.test(normalized)) {
     await pool.query(`UPDATE whatsapp_conversations SET human_mode=FALSE, human_last_reply_at=NULL, updated_at=NOW() WHERE phone=$1`, [from]);
@@ -359,8 +359,8 @@ A partir de agora, o atendimento automático ficará pausado nesta conversa enqu
 
   // Cotação de entrega direta, sem Uber/Lalamove.
   if (conversation?.delivery_quote_pending) {
-    const cep = text.replace(/\\D/g, '');
-    if (/^\\d{8}$/.test(cep)) {
+    const cep = text.replace(/\D/g, '');
+    if (/^\d{8}$/.test(cep)) {
       try {
         const geo = await geocodeDeliveryAddress({ cep });
         const feeCents = directDeliveryFee(geo.distanceKm);
